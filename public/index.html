@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JobFeeder - Theirstack Job Search</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>JobFeeder</h1>
+            <p class="subtitle">Search jobs from the last 15 days with company filters</p>
+            <div id="apiStatus" class="api-status"></div>
+        </header>
+
+        <form id="searchForm" class="search-form">
+            <div class="form-section">
+                <h3>Job Criteria</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="jobTitle">Job Title *</label>
+                        <input type="text" id="jobTitle" placeholder="e.g., Software Engineer, Data Scientist" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="jobSeniority">Seniority Level</label>
+                        <select id="jobSeniority" multiple>
+                            <option value="intern">Intern</option>
+                            <option value="junior">Junior</option>
+                            <option value="mid_level">Mid Level</option>
+                            <option value="senior">Senior</option>
+                            <option value="staff">Staff</option>
+                            <option value="c_level">C-Level</option>
+                        </select>
+                        <small>Hold Ctrl/Cmd to select multiple</small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h3>Location</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="jobLocation">Job Location (City/Region)</label>
+                        <input type="text" id="jobLocation" placeholder="e.g., New York, London, Remote">
+                    </div>
+                    <div class="form-group">
+                        <label for="jobCountry">Country</label>
+                        <select id="jobCountry" multiple>
+                            <option value="US">United States</option>
+                            <option value="GB">United Kingdom</option>
+                            <option value="CA">Canada</option>
+                            <option value="DE">Germany</option>
+                            <option value="FR">France</option>
+                            <option value="AU">Australia</option>
+                            <option value="NL">Netherlands</option>
+                            <option value="ES">Spain</option>
+                            <option value="IT">Italy</option>
+                            <option value="SE">Sweden</option>
+                            <option value="CH">Switzerland</option>
+                            <option value="IE">Ireland</option>
+                            <option value="SG">Singapore</option>
+                            <option value="IN">India</option>
+                            <option value="BR">Brazil</option>
+                            <option value="JP">Japan</option>
+                            <option value="PL">Poland</option>
+                            <option value="IL">Israel</option>
+                        </select>
+                        <small>Hold Ctrl/Cmd to select multiple</small>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group checkbox-group">
+                        <label>
+                            <input type="checkbox" id="remoteOnly">
+                            Remote jobs only
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h3>Company Criteria</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="minEmployees">Min Employees</label>
+                        <input type="number" id="minEmployees" placeholder="e.g., 50" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label for="maxEmployees">Max Employees</label>
+                        <input type="number" id="maxEmployees" placeholder="e.g., 1000" min="1">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="industry">Industry</label>
+                        <input type="text" id="industry" placeholder="e.g., Software, Finance, Healthcare">
+                    </div>
+                    <div class="form-group">
+                        <label for="fundingStage">Funding Stage</label>
+                        <select id="fundingStage" multiple>
+                            <option value="seed">Seed</option>
+                            <option value="series_a">Series A</option>
+                            <option value="series_b">Series B</option>
+                            <option value="series_c">Series C</option>
+                            <option value="series_d">Series D</option>
+                            <option value="series_e">Series E+</option>
+                            <option value="ipo">IPO/Public</option>
+                        </select>
+                        <small>Hold Ctrl/Cmd to select multiple</small>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group checkbox-group">
+                        <label>
+                            <input type="checkbox" id="ycOnly">
+                            Y Combinator companies only
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h3>Additional Filters</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="technologies">Technologies Used</label>
+                        <input type="text" id="technologies" placeholder="e.g., React, Python, AWS (comma-separated)">
+                    </div>
+                    <div class="form-group">
+                        <label for="excludeCompanies">Exclude Companies</label>
+                        <input type="text" id="excludeCompanies" placeholder="e.g., Google, Meta (comma-separated)">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="resultsLimit">Results per page</label>
+                        <select id="resultsLimit">
+                            <option value="10">10</option>
+                            <option value="25" selected>25</option>
+                            <option value="50">50</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="sortBy">Sort By</label>
+                        <select id="sortBy">
+                            <option value="date_posted" selected>Date Posted (Newest)</option>
+                            <option value="company">Company Name</option>
+                            <option value="job_title">Job Title</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" id="searchBtn" class="btn-primary">Search Jobs</button>
+                <button type="button" id="resetBtn" class="btn-secondary">Reset Filters</button>
+            </div>
+        </form>
+
+        <div id="resultsSection" class="results-section" style="display: none;">
+            <div class="results-header">
+                <h2>Search Results</h2>
+                <span id="resultsCount" class="results-count"></span>
+            </div>
+            <div id="jobResults" class="job-results"></div>
+            <div id="pagination" class="pagination"></div>
+        </div>
+
+        <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+            <div class="spinner"></div>
+            <p>Searching for jobs...</p>
+        </div>
+
+        <div id="errorMessage" class="error-message" style="display: none;"></div>
+    </div>
+
+    <!-- Job Detail Modal -->
+    <div id="jobModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+            <div id="modalBody"></div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

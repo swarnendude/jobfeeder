@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: jobfeeder
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: THEIRSTACK_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: NODE_ENV
+        value: production

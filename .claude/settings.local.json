@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:api.theirstack.com)",
+      "WebFetch(domain:theirstack.com)",
+      "Bash(move \"E:\\\\Projects\\\\jobfeeder\\\\index.html\" \"E:\\\\Projects\\\\jobfeeder\\\\public\"\" 2>nul || echo \"Will create new file \")",
+      "Bash(del /q \"E:\\\\Projects\\\\jobfeeder\\\\index.html\" \"E:\\\\Projects\\\\jobfeeder\\\\styles.css\" \"E:\\\\Projects\\\\jobfeeder\\\\app.js\")",
+      "Bash(del \"E:\\\\Projects\\\\jobfeeder\\\\nul\")",
+      "Bash(git reset:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}
