@@ -7,10 +7,21 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+    <!-- Search History Sidebar -->
+    <aside id="searchHistorySidebar" class="search-history-sidebar">
+        <div class="sidebar-header">
+            <h3>Search History</h3>
+            <button id="clearHistoryBtn" class="btn-clear-history" title="Clear all history">Clear</button>
+        </div>
+        <div id="searchHistoryList" class="search-history-list">
+            <p class="no-history">No saved searches yet</p>
+        </div>
+    </aside>
+
     <div class="container">
         <header>
             <h1>JobFeeder</h1>
-            <p class="subtitle">Search jobs from the last 15 days with company filters</p>
+            <p class="subtitle">Search jobs with company filters</p>
             <div id="apiStatus" class="api-status"></div>
         </header>
 
@@ -134,13 +145,28 @@
                 </div>
                 <div class="form-row">
                     <div class="form-group">
+                        <label for="postedDays">Posted Within</label>
+                        <select id="postedDays">
+                            <option value="1">Last 24 hours</option>
+                            <option value="3">Last 3 days</option>
+                            <option value="7">Last 7 days</option>
+                            <option value="15" selected>Last 15 days</option>
+                            <option value="30">Last 30 days</option>
+                            <option value="60">Last 60 days</option>
+                            <option value="90">Last 90 days</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
                         <label for="resultsLimit">Results per page</label>
                         <select id="resultsLimit">
                             <option value="10">10</option>
                             <option value="25" selected>25</option>
                             <option value="50">50</option>
+                            <option value="100">100</option>
                         </select>
                     </div>
+                </div>
+                <div class="form-row">
                     <div class="form-group">
                         <label for="sortBy">Sort By</label>
                         <select id="sortBy">
@@ -182,6 +208,25 @@
             <div id="modalBody"></div>
         </div>
     </div>
+
+    <!-- Job Folders Sidebar -->
+    <aside id="jobFoldersSidebar" class="job-folders-sidebar">
+        <div class="folders-header">
+            <h3>Job Folders</h3>
+            <button id="toggleFoldersBtn" class="btn-toggle-folders" title="Toggle folders">
+                <span id="totalJobsCount">0</span>
+            </button>
+        </div>
+        <div class="folders-body">
+            <div class="new-folder-section">
+                <input type="text" id="newFolderName" placeholder="Create new folder..." class="new-folder-input">
+                <button id="createFolderBtn" class="btn-create-folder" title="Create folder">+</button>
+            </div>
+            <div id="foldersList" class="folders-list">
+                <p class="no-folders">No folders yet. Create one above.</p>
+            </div>
+        </div>
+    </aside>
 
     <script src="app.js"></script>
 </body>

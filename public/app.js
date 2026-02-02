@@ -1,5 +1,8 @@
 // JobFeeder - Frontend Application
-const DAYS_FILTER = 15;
+const SEARCH_HISTORY_KEY = 'jobfeeder_search_history';
+const JOB_FOLDERS_KEY = 'jobfeeder_job_folders';
+const LAST_FOLDER_KEY = 'jobfeeder_last_folder';
+const MAX_HISTORY_ITEMS = 20;
 
 // State
 let currentPage = 0;
@@ -7,6 +10,9 @@ let totalResults = 0;
 let currentSearchParams = null;
 let jobsCache = [];
 let claudeEnabled = false;
+let searchHistory = [];
+let jobFolders = []; // Array of { id, name, jobs: [], createdAt, updatedAt }
+let lastUsedFolderId = null;
 
 // DOM Elements
 const $ = (id) => document.getElementById(id);
@@ -24,6 +30,16 @@ const elements = {
     apiStatus: $('apiStatus'),
     jobModal: $('jobModal'),
     modalBody: $('modalBody'),
+    // Search history
+    searchHistoryList: $('searchHistoryList'),
+    clearHistoryBtn: $('clearHistoryBtn'),
+    // Job folders
+    jobFoldersSidebar: $('jobFoldersSidebar'),
+    totalJobsCount: $('totalJobsCount'),
+    newFolderName: $('newFolderName'),
+    createFolderBtn: $('createFolderBtn'),
+    foldersList: $('foldersList'),
+    toggleFoldersBtn: $('toggleFoldersBtn'),
     // Form inputs
     jobTitle: $('jobTitle'),
     jobSeniority: $('jobSeniority'),
@@ -37,6 +53,7 @@ const elements = {
     ycOnly: $('ycOnly'),
     technologies: $('technologies'),
     excludeCompanies: $('excludeCompanies'),
+    postedDays: $('postedDays'),
     resultsLimit: $('resultsLimit'),
     sortBy: $('sortBy')
 };
@@ -44,10 +61,19 @@ const elements = {
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
     await checkApiStatus();
+    loadSearchHistory();
+    loadJobFolders();
     elements.searchForm.addEventListener('submit', handleSearch);
     elements.resetBtn.addEventListener('click', resetForm);
+    elements.clearHistoryBtn.addEventListener('click', clearSearchHistory);
     elements.jobModal.addEventListener('click', (e) => {
         if (e.target === elements.jobModal) closeModal();
+    });
+    // Folder event listeners
+    elements.toggleFoldersBtn.addEventListener('click', toggleFolders);
+    elements.createFolderBtn.addEventListener('click', createNewFolder);
+    elements.newFolderName.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') createNewFolder();
     });
 });
 
@@ -82,11 +108,12 @@ async function checkApiStatus() {
 // Build search parameters
 function buildSearchParams() {
     const params = {
-        posted_at_max_age_days: DAYS_FILTER,
+        posted_at_max_age_days: parseInt(elements.postedDays.value) || 15,
         limit: parseInt(elements.resultsLimit.value),
         page: currentPage,
         order_by: [{ desc: true, field: elements.sortBy.value }],
-        include_total_results: true
+        include_total_results: true,
+        blur_company_data: false
     };
 
     // Job title (required)
@@ -201,6 +228,8 @@ async function performSearch() {
     hideError();
 
     try {
+        console.log('Search params:', JSON.stringify(currentSearchParams, null, 2));
+
         const response = await fetch('/api/jobs/search', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -208,6 +237,7 @@ async function performSearch() {
         });
 
         const data = await response.json();
+        console.log('API response:', data);
 
         if (!response.ok) {
             throw new Error(data.error || `API error: ${response.status}`);
@@ -215,8 +245,14 @@ async function performSearch() {
 
         totalResults = data.total || data.metadata?.total_results || 0;
         jobsCache = data.data || [];
+        console.log(`Got ${jobsCache.length} jobs out of ${totalResults} total`);
         displayResults(jobsCache);
         updatePagination();
+
+        // Save to history on first page only
+        if (currentSearchParams.page === 0) {
+            saveSearchToHistory(currentSearchParams, totalResults);
+        }
 
     } catch (error) {
         console.error('Search error:', error);
@@ -310,14 +346,26 @@ function createJobCard(job, index) {
         ? `<button class="btn-analyze" onclick="analyzeJob(${index})">AI Analysis</button>`
         : '';
 
+    // Check which folders contain this job
+    const jobInFolders = getJobFolders(job, companyName);
+    const folderButton = jobInFolders.length > 0
+        ? `<button class="btn-add-folder btn-in-folder" onclick="showFolderPicker(${index})" title="In: ${jobInFolders.map(f => f.name).join(', ')}">
+            <span class="folder-icon">&#128193;</span>
+            <span class="folder-count">${jobInFolders.length}</span>
+           </button>`
+        : `<button class="btn-add-folder" onclick="showFolderPicker(${index})" title="Add to folder">
+            <span class="folder-icon">+</span>
+           </button>`;
+
     return `
-        <div class="job-card">
+        <div class="job-card" data-job-id="${job.id || index}">
             <div class="job-card-header">
                 ${logoHtml}
                 <div class="job-card-title">
                     <h3>${escapeHtml(job.job_title || 'Untitled Position')}</h3>
                     <span class="company-name">${escapeHtml(companyName)}</span>
                 </div>
+                ${folderButton}
             </div>
 
             <div class="job-card-meta">${metaTags}</div>
@@ -327,6 +375,7 @@ function createJobCard(job, index) {
             ${techHtml}
 
             <div class="job-card-actions">
+                <button class="btn-details" onclick="showJobDetails(${index})">Details</button>
                 <a href="${escapeHtml(jobUrl)}" target="_blank" rel="noopener noreferrer" class="btn-view-job">View Job</a>
                 ${aiButton}
             </div>
@@ -433,6 +482,728 @@ function resetForm() {
     jobsCache = [];
 }
 
+// Search History Functions
+function loadSearchHistory() {
+    try {
+        const stored = localStorage.getItem(SEARCH_HISTORY_KEY);
+        searchHistory = stored ? JSON.parse(stored) : [];
+        renderSearchHistory();
+    } catch (e) {
+        console.error('Failed to load search history:', e);
+        searchHistory = [];
+    }
+}
+
+function saveSearchToHistory(params, resultsCount) {
+    const historyItem = {
+        id: Date.now(),
+        timestamp: new Date().toISOString(),
+        params: { ...params },
+        resultsCount: resultsCount,
+        criteria: buildCriteriaSummary(params)
+    };
+
+    // Remove duplicate searches (same job title and key criteria)
+    searchHistory = searchHistory.filter(item =>
+        item.criteria.title !== historyItem.criteria.title ||
+        JSON.stringify(item.params) !== JSON.stringify(historyItem.params)
+    );
+
+    // Add to beginning
+    searchHistory.unshift(historyItem);
+
+    // Keep only last MAX_HISTORY_ITEMS
+    if (searchHistory.length > MAX_HISTORY_ITEMS) {
+        searchHistory = searchHistory.slice(0, MAX_HISTORY_ITEMS);
+    }
+
+    // Save to localStorage
+    try {
+        localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(searchHistory));
+    } catch (e) {
+        console.error('Failed to save search history:', e);
+    }
+
+    renderSearchHistory();
+}
+
+function buildCriteriaSummary(params) {
+    const criteria = {
+        title: '',
+        tags: []
+    };
+
+    // Job title
+    if (params.job_title_pattern_or) {
+        criteria.title = params.job_title_pattern_or.join(', ');
+    }
+
+    // Location
+    if (params.job_location_pattern_or) {
+        criteria.tags.push(params.job_location_pattern_or.join(', '));
+    }
+
+    // Country
+    if (params.job_country_code_or) {
+        criteria.tags.push(params.job_country_code_or.join(', '));
+    }
+
+    // Remote
+    if (params.remote) {
+        criteria.tags.push('Remote');
+    }
+
+    // Seniority
+    if (params.job_seniority_or) {
+        criteria.tags.push(params.job_seniority_or.map(s => formatSeniority(s)).join(', '));
+    }
+
+    // Industry
+    if (params.industry_or) {
+        criteria.tags.push(params.industry_or.join(', '));
+    }
+
+    // Employee count
+    if (params.min_employee_count || params.max_employee_count) {
+        const min = params.min_employee_count || '1';
+        const max = params.max_employee_count || '+';
+        criteria.tags.push(`${min}-${max} employees`);
+    }
+
+    // YC only
+    if (params.only_yc_companies) {
+        criteria.tags.push('YC');
+    }
+
+    // Funding
+    if (params.funding_stage_or) {
+        criteria.tags.push(params.funding_stage_or.map(s => formatFundingStage(s)).join(', '));
+    }
+
+    return criteria;
+}
+
+function formatSeniority(seniority) {
+    const map = {
+        'intern': 'Intern',
+        'junior': 'Junior',
+        'mid_level': 'Mid',
+        'senior': 'Senior',
+        'staff': 'Staff',
+        'c_level': 'C-Level'
+    };
+    return map[seniority] || seniority;
+}
+
+function renderSearchHistory() {
+    if (searchHistory.length === 0) {
+        elements.searchHistoryList.innerHTML = '<p class="no-history">No saved searches yet</p>';
+        return;
+    }
+
+    elements.searchHistoryList.innerHTML = searchHistory.map(item => `
+        <div class="search-history-item" data-id="${item.id}">
+            <button class="history-item-delete" onclick="deleteHistoryItem(event, ${item.id})" title="Delete">&times;</button>
+            <div class="history-item-title">
+                ${escapeHtml(item.criteria.title || 'Untitled Search')}
+                <span class="results-badge">${item.resultsCount}</span>
+            </div>
+            ${item.criteria.tags.length > 0 ? `
+                <div class="history-item-criteria">
+                    ${item.criteria.tags.slice(0, 4).map(tag => `<span class="history-criteria-tag">${escapeHtml(tag)}</span>`).join('')}
+                </div>
+            ` : ''}
+            <div class="history-item-date">${formatHistoryDate(item.timestamp)}</div>
+        </div>
+    `).join('');
+
+    // Add click handlers for loading searches
+    elements.searchHistoryList.querySelectorAll('.search-history-item').forEach(el => {
+        el.addEventListener('click', (e) => {
+            if (!e.target.classList.contains('history-item-delete')) {
+                const id = parseInt(el.dataset.id);
+                loadSearchFromHistory(id);
+            }
+        });
+    });
+}
+
+function formatHistoryDate(isoString) {
+    const date = new Date(isoString);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
+}
+
+function loadSearchFromHistory(id) {
+    const item = searchHistory.find(h => h.id === id);
+    if (!item) return;
+
+    // Restore form values from params
+    restoreFormFromParams(item.params);
+
+    // Trigger search
+    currentPage = 0;
+    currentSearchParams = { ...item.params, page: 0 };
+    performSearch();
+}
+
+function restoreFormFromParams(params) {
+    // Reset form first
+    elements.searchForm.reset();
+
+    // Job title
+    if (params.job_title_pattern_or) {
+        elements.jobTitle.value = params.job_title_pattern_or.join(', ');
+    }
+
+    // Seniority
+    if (params.job_seniority_or) {
+        setSelectedValues(elements.jobSeniority, params.job_seniority_or);
+    }
+
+    // Location
+    if (params.job_location_pattern_or) {
+        elements.jobLocation.value = params.job_location_pattern_or.join(', ');
+    }
+
+    // Country
+    if (params.job_country_code_or) {
+        setSelectedValues(elements.jobCountry, params.job_country_code_or);
+    }
+
+    // Remote
+    elements.remoteOnly.checked = !!params.remote;
+
+    // Employees
+    if (params.min_employee_count) {
+        elements.minEmployees.value = params.min_employee_count;
+    }
+    if (params.max_employee_count) {
+        elements.maxEmployees.value = params.max_employee_count;
+    }
+
+    // Industry
+    if (params.industry_or) {
+        elements.industry.value = params.industry_or.join(', ');
+    }
+
+    // Funding stage
+    if (params.funding_stage_or) {
+        setSelectedValues(elements.fundingStage, params.funding_stage_or);
+    }
+
+    // YC only
+    elements.ycOnly.checked = !!params.only_yc_companies;
+
+    // Technologies
+    if (params.company_technology_slug_or) {
+        elements.technologies.value = params.company_technology_slug_or.join(', ');
+    }
+
+    // Exclude companies
+    if (params.company_name_not) {
+        elements.excludeCompanies.value = params.company_name_not.join(', ');
+    }
+
+    // Posted days
+    if (params.posted_at_max_age_days) {
+        elements.postedDays.value = params.posted_at_max_age_days;
+    }
+
+    // Results limit
+    if (params.limit) {
+        elements.resultsLimit.value = params.limit;
+    }
+
+    // Sort by
+    if (params.order_by && params.order_by[0]) {
+        elements.sortBy.value = params.order_by[0].field;
+    }
+}
+
+function setSelectedValues(selectElement, values) {
+    Array.from(selectElement.options).forEach(option => {
+        option.selected = values.includes(option.value);
+    });
+}
+
+function deleteHistoryItem(event, id) {
+    event.stopPropagation();
+    searchHistory = searchHistory.filter(item => item.id !== id);
+    try {
+        localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(searchHistory));
+    } catch (e) {
+        console.error('Failed to save search history:', e);
+    }
+    renderSearchHistory();
+}
+
+function clearSearchHistory() {
+    if (confirm('Are you sure you want to clear all search history?')) {
+        searchHistory = [];
+        try {
+            localStorage.removeItem(SEARCH_HISTORY_KEY);
+        } catch (e) {
+            console.error('Failed to clear search history:', e);
+        }
+        renderSearchHistory();
+    }
+}
+
+// Job Details Modal
+function showJobDetails(index) {
+    const job = jobsCache[index];
+    if (!job) return;
+
+    const company = job.company_object || {};
+    const companyName = company.name || job.company || 'Unknown Company';
+
+    // Build comprehensive details HTML
+    let detailsHtml = `
+        <div class="modal-header">
+            <h2>${escapeHtml(job.job_title || 'Untitled Position')}</h2>
+            <p>${escapeHtml(companyName)}</p>
+        </div>
+        <div class="job-details-content">
+    `;
+
+    // Basic Info Section
+    detailsHtml += `<div class="details-section"><h4>Job Information</h4><div class="details-grid">`;
+    if (job.short_location || job.location) detailsHtml += `<div class="detail-item"><span class="detail-label">Location</span><span class="detail-value">${escapeHtml(job.short_location || job.location)}</span></div>`;
+    if (job.date_posted) detailsHtml += `<div class="detail-item"><span class="detail-label">Posted</span><span class="detail-value">${escapeHtml(job.date_posted)}</span></div>`;
+    if (job.salary_string) detailsHtml += `<div class="detail-item"><span class="detail-label">Salary</span><span class="detail-value">${escapeHtml(job.salary_string)}</span></div>`;
+    if (job.remote !== undefined) detailsHtml += `<div class="detail-item"><span class="detail-label">Remote</span><span class="detail-value">${job.remote ? 'Yes' : 'No'}</span></div>`;
+    if (job.job_type) detailsHtml += `<div class="detail-item"><span class="detail-label">Job Type</span><span class="detail-value">${escapeHtml(job.job_type)}</span></div>`;
+    if (job.seniority) detailsHtml += `<div class="detail-item"><span class="detail-label">Seniority</span><span class="detail-value">${escapeHtml(formatSeniority(job.seniority))}</span></div>`;
+    detailsHtml += `</div></div>`;
+
+    // Company Info Section
+    detailsHtml += `<div class="details-section"><h4>Company Information</h4><div class="details-grid">`;
+    if (company.name) detailsHtml += `<div class="detail-item"><span class="detail-label">Company</span><span class="detail-value">${escapeHtml(company.name)}</span></div>`;
+    if (company.domain) detailsHtml += `<div class="detail-item"><span class="detail-label">Website</span><span class="detail-value"><a href="https://${escapeHtml(company.domain)}" target="_blank">${escapeHtml(company.domain)}</a></span></div>`;
+    if (company.industry) detailsHtml += `<div class="detail-item"><span class="detail-label">Industry</span><span class="detail-value">${escapeHtml(company.industry)}</span></div>`;
+    if (company.employee_count) detailsHtml += `<div class="detail-item"><span class="detail-label">Employees</span><span class="detail-value">${company.employee_count.toLocaleString()}</span></div>`;
+    if (company.founded_year) detailsHtml += `<div class="detail-item"><span class="detail-label">Founded</span><span class="detail-value">${company.founded_year}</span></div>`;
+    if (company.country) detailsHtml += `<div class="detail-item"><span class="detail-label">HQ Country</span><span class="detail-value">${escapeHtml(company.country)}</span></div>`;
+    if (company.city) detailsHtml += `<div class="detail-item"><span class="detail-label">HQ City</span><span class="detail-value">${escapeHtml(company.city)}</span></div>`;
+    if (company.funding_stage) detailsHtml += `<div class="detail-item"><span class="detail-label">Funding Stage</span><span class="detail-value">${escapeHtml(formatFundingStage(company.funding_stage))}</span></div>`;
+    if (company.total_funding_usd) detailsHtml += `<div class="detail-item"><span class="detail-label">Total Funding</span><span class="detail-value">$${formatNumber(company.total_funding_usd)}</span></div>`;
+    if (company.annual_revenue_usd_readable) detailsHtml += `<div class="detail-item"><span class="detail-label">Annual Revenue</span><span class="detail-value">${escapeHtml(company.annual_revenue_usd_readable)}</span></div>`;
+    if (company.linkedin_url) detailsHtml += `<div class="detail-item"><span class="detail-label">LinkedIn</span><span class="detail-value"><a href="${escapeHtml(company.linkedin_url)}" target="_blank">View Profile</a></span></div>`;
+    detailsHtml += `</div></div>`;
+
+    // Technologies
+    const technologies = job.technology_slugs || company.technology_names || [];
+    if (technologies.length > 0) {
+        detailsHtml += `<div class="details-section"><h4>Technologies</h4><div class="technologies">${technologies.map(t => `<span class="tech-tag">${escapeHtml(t)}</span>`).join('')}</div></div>`;
+    }
+
+    // Description
+    if (job.description) {
+        detailsHtml += `<div class="details-section"><h4>Job Description</h4><div class="job-description">${escapeHtml(job.description)}</div></div>`;
+    }
+
+    // Raw data for debugging/reference
+    detailsHtml += `<div class="details-section collapsible"><h4 onclick="toggleRawData(this)">Raw Data (click to expand)</h4><pre class="raw-data" style="display:none;">${escapeHtml(JSON.stringify(job, null, 2))}</pre></div>`;
+
+    detailsHtml += `</div>`;
+
+    // Action buttons
+    const jobUrl = job.url || job.final_url || '#';
+    const jobInFolders = getJobFolders(job, companyName);
+    const folderText = jobInFolders.length > 0
+        ? `In ${jobInFolders.length} folder${jobInFolders.length > 1 ? 's' : ''}: ${jobInFolders.map(f => f.name).join(', ')}`
+        : 'Add to Folder';
+    detailsHtml += `
+        <div class="modal-actions">
+            <a href="${escapeHtml(jobUrl)}" target="_blank" rel="noopener noreferrer" class="btn-primary">View Original Posting</a>
+            <button class="btn-add-to-folder ${jobInFolders.length > 0 ? 'has-folders' : ''}" onclick="showFolderPicker(${index})">${folderText}</button>
+        </div>
+    `;
+
+    elements.modalBody.innerHTML = detailsHtml;
+    elements.jobModal.style.display = 'flex';
+}
+
+function toggleRawData(header) {
+    const pre = header.nextElementSibling;
+    pre.style.display = pre.style.display === 'none' ? 'block' : 'none';
+}
+
+// Job Folder Functions
+function loadJobFolders() {
+    try {
+        const stored = localStorage.getItem(JOB_FOLDERS_KEY);
+        jobFolders = stored ? JSON.parse(stored) : [];
+        lastUsedFolderId = localStorage.getItem(LAST_FOLDER_KEY);
+        renderFolders();
+        updateTotalJobsCount();
+    } catch (e) {
+        console.error('Failed to load job folders:', e);
+        jobFolders = [];
+    }
+}
+
+function saveFolders() {
+    try {
+        localStorage.setItem(JOB_FOLDERS_KEY, JSON.stringify(jobFolders));
+    } catch (e) {
+        console.error('Failed to save job folders:', e);
+    }
+}
+
+function saveLastUsedFolder(folderId) {
+    lastUsedFolderId = folderId;
+    try {
+        localStorage.setItem(LAST_FOLDER_KEY, folderId);
+    } catch (e) {
+        console.error('Failed to save last folder:', e);
+    }
+}
+
+function createNewFolder() {
+    const name = elements.newFolderName.value.trim();
+    if (!name) {
+        alert('Please enter a folder name');
+        return;
+    }
+
+    // Check for duplicate name
+    if (jobFolders.some(f => f.name.toLowerCase() === name.toLowerCase())) {
+        alert('A folder with this name already exists');
+        return;
+    }
+
+    const folder = {
+        id: Date.now().toString(),
+        name: name,
+        jobs: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+    };
+
+    jobFolders.unshift(folder);
+    saveFolders();
+    saveLastUsedFolder(folder.id);
+    elements.newFolderName.value = '';
+    renderFolders();
+}
+
+function getJobFolders(job, companyName) {
+    const jobId = job.id || `${job.job_title}-${companyName}`;
+    return jobFolders.filter(folder =>
+        folder.jobs.some(j => j.id === jobId || (j.job_title === job.job_title && j.company === companyName))
+    );
+}
+
+function isJobInFolder(job, companyName, folderId) {
+    const folder = jobFolders.find(f => f.id === folderId);
+    if (!folder) return false;
+    const jobId = job.id || `${job.job_title}-${companyName}`;
+    return folder.jobs.some(j => j.id === jobId || (j.job_title === job.job_title && j.company === companyName));
+}
+
+function addJobToFolder(index, folderId) {
+    const job = jobsCache[index];
+    if (!job) return;
+
+    const folder = jobFolders.find(f => f.id === folderId);
+    if (!folder) return;
+
+    const company = job.company_object || {};
+    const companyName = company.name || job.company || 'Unknown Company';
+
+    // Check if already in this folder
+    if (isJobInFolder(job, companyName, folderId)) {
+        return;
+    }
+
+    const jobItem = {
+        id: job.id || `${job.job_title}-${companyName}-${Date.now()}`,
+        job_title: job.job_title,
+        company: companyName,
+        location: job.short_location || job.location,
+        url: job.url || job.final_url,
+        salary_string: job.salary_string,
+        date_posted: job.date_posted,
+        addedAt: new Date().toISOString()
+    };
+
+    folder.jobs.push(jobItem);
+    folder.updatedAt = new Date().toISOString();
+
+    // Move folder to top (most recently used)
+    jobFolders = jobFolders.filter(f => f.id !== folderId);
+    jobFolders.unshift(folder);
+
+    saveFolders();
+    saveLastUsedFolder(folderId);
+    renderFolders();
+    updateTotalJobsCount();
+    displayResults(jobsCache);
+    closeModal();
+}
+
+function removeJobFromFolder(jobId, folderId) {
+    const folder = jobFolders.find(f => f.id === folderId);
+    if (!folder) return;
+
+    folder.jobs = folder.jobs.filter(j => j.id !== jobId);
+    folder.updatedAt = new Date().toISOString();
+
+    saveFolders();
+    renderFolders();
+    updateTotalJobsCount();
+    displayResults(jobsCache);
+}
+
+function deleteFolder(folderId) {
+    const folder = jobFolders.find(f => f.id === folderId);
+    if (!folder) return;
+
+    if (!confirm(`Delete folder "${folder.name}" and all ${folder.jobs.length} jobs in it?`)) return;
+
+    jobFolders = jobFolders.filter(f => f.id !== folderId);
+    saveFolders();
+
+    if (lastUsedFolderId === folderId) {
+        lastUsedFolderId = jobFolders.length > 0 ? jobFolders[0].id : null;
+        saveLastUsedFolder(lastUsedFolderId || '');
+    }
+
+    renderFolders();
+    updateTotalJobsCount();
+    displayResults(jobsCache);
+}
+
+function exportFolder(folderId) {
+    const folder = jobFolders.find(f => f.id === folderId);
+    if (!folder || folder.jobs.length === 0) {
+        alert('Folder is empty');
+        return;
+    }
+
+    const csv = generateCSV(folder.jobs);
+    downloadFile(csv, `${folder.name}.csv`, 'text/csv');
+}
+
+function toggleFolders() {
+    elements.jobFoldersSidebar.classList.toggle('expanded');
+}
+
+function toggleFolderExpand(folderId) {
+    const folderEl = document.querySelector(`.folder-item[data-id="${folderId}"]`);
+    if (folderEl) {
+        folderEl.classList.toggle('expanded');
+    }
+}
+
+function updateTotalJobsCount() {
+    const total = jobFolders.reduce((sum, folder) => sum + folder.jobs.length, 0);
+    elements.totalJobsCount.textContent = total;
+}
+
+function renderFolders() {
+    if (jobFolders.length === 0) {
+        elements.foldersList.innerHTML = '<p class="no-folders">No folders yet. Create one above.</p>';
+        return;
+    }
+
+    elements.foldersList.innerHTML = jobFolders.map(folder => `
+        <div class="folder-item" data-id="${folder.id}">
+            <div class="folder-header" onclick="toggleFolderExpand('${folder.id}')">
+                <span class="folder-expand-icon">&#9658;</span>
+                <span class="folder-name">${escapeHtml(folder.name)}</span>
+                <span class="folder-job-count">${folder.jobs.length}</span>
+                <div class="folder-actions">
+                    <button class="btn-folder-export" onclick="event.stopPropagation(); exportFolder('${folder.id}')" title="Export CSV">&#8681;</button>
+                    <button class="btn-folder-delete" onclick="event.stopPropagation(); deleteFolder('${folder.id}')" title="Delete folder">&times;</button>
+                </div>
+            </div>
+            <div class="folder-jobs">
+                ${folder.jobs.length === 0 ? '<p class="no-folder-jobs">No jobs in this folder</p>' :
+                    folder.jobs.map(job => `
+                        <div class="folder-job-item">
+                            <button class="folder-job-remove" onclick="removeJobFromFolder('${job.id}', '${folder.id}')">&times;</button>
+                            <div class="folder-job-title">${escapeHtml(job.job_title)}</div>
+                            <div class="folder-job-company">${escapeHtml(job.company)}</div>
+                            ${job.url ? `<a href="${escapeHtml(job.url)}" target="_blank" class="folder-job-link">View</a>` : ''}
+                        </div>
+                    `).join('')
+                }
+            </div>
+        </div>
+    `).join('');
+}
+
+function showFolderPicker(index) {
+    const job = jobsCache[index];
+    if (!job) return;
+
+    const company = job.company_object || {};
+    const companyName = company.name || job.company || 'Unknown Company';
+
+    let pickerHtml = `
+        <div class="modal-header">
+            <h2>Add to Folder</h2>
+            <p>${escapeHtml(job.job_title)} at ${escapeHtml(companyName)}</p>
+        </div>
+        <div class="folder-picker-content">
+    `;
+
+    if (jobFolders.length === 0) {
+        pickerHtml += `
+            <p class="no-folders-message">No folders yet. Create one first:</p>
+            <div class="quick-create-folder">
+                <input type="text" id="quickFolderName" placeholder="Folder name..." class="quick-folder-input">
+                <button onclick="quickCreateFolder(${index})" class="btn-quick-create">Create & Add</button>
+            </div>
+        `;
+    } else {
+        // Show existing folders with checkboxes
+        pickerHtml += `<div class="folder-picker-list">`;
+
+        // Sort folders - last used first
+        const sortedFolders = [...jobFolders].sort((a, b) => {
+            if (a.id === lastUsedFolderId) return -1;
+            if (b.id === lastUsedFolderId) return 1;
+            return 0;
+        });
+
+        sortedFolders.forEach(folder => {
+            const isInFolder = isJobInFolder(job, companyName, folder.id);
+            const isLastUsed = folder.id === lastUsedFolderId;
+            pickerHtml += `
+                <div class="folder-picker-item ${isInFolder ? 'in-folder' : ''} ${isLastUsed ? 'last-used' : ''}"
+                     onclick="toggleJobInFolder(${index}, '${folder.id}')">
+                    <span class="folder-picker-check">${isInFolder ? '&#10003;' : ''}</span>
+                    <span class="folder-picker-name">${escapeHtml(folder.name)}</span>
+                    <span class="folder-picker-count">${folder.jobs.length} jobs</span>
+                    ${isLastUsed ? '<span class="last-used-badge">Recent</span>' : ''}
+                </div>
+            `;
+        });
+
+        pickerHtml += `</div>`;
+
+        // Quick create option
+        pickerHtml += `
+            <div class="quick-create-folder">
+                <input type="text" id="quickFolderName" placeholder="Or create new folder..." class="quick-folder-input">
+                <button onclick="quickCreateFolder(${index})" class="btn-quick-create">+</button>
+            </div>
+        `;
+    }
+
+    pickerHtml += `</div>`;
+
+    elements.modalBody.innerHTML = pickerHtml;
+    elements.jobModal.style.display = 'flex';
+
+    // Focus on input if no folders
+    if (jobFolders.length === 0) {
+        setTimeout(() => document.getElementById('quickFolderName')?.focus(), 100);
+    }
+}
+
+function toggleJobInFolder(index, folderId) {
+    const job = jobsCache[index];
+    if (!job) return;
+
+    const company = job.company_object || {};
+    const companyName = company.name || job.company || 'Unknown Company';
+
+    if (isJobInFolder(job, companyName, folderId)) {
+        // Remove from folder
+        const folder = jobFolders.find(f => f.id === folderId);
+        if (folder) {
+            const jobId = job.id || `${job.job_title}-${companyName}`;
+            folder.jobs = folder.jobs.filter(j => !(j.id === jobId || (j.job_title === job.job_title && j.company === companyName)));
+            folder.updatedAt = new Date().toISOString();
+            saveFolders();
+        }
+    } else {
+        addJobToFolder(index, folderId);
+        return; // addJobToFolder already handles modal close and updates
+    }
+
+    // Refresh the picker
+    showFolderPicker(index);
+    renderFolders();
+    updateTotalJobsCount();
+    displayResults(jobsCache);
+}
+
+function quickCreateFolder(jobIndex) {
+    const input = document.getElementById('quickFolderName');
+    const name = input?.value.trim();
+
+    if (!name) {
+        alert('Please enter a folder name');
+        return;
+    }
+
+    // Check for duplicate name
+    if (jobFolders.some(f => f.name.toLowerCase() === name.toLowerCase())) {
+        alert('A folder with this name already exists');
+        return;
+    }
+
+    const folder = {
+        id: Date.now().toString(),
+        name: name,
+        jobs: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+    };
+
+    jobFolders.unshift(folder);
+    saveFolders();
+    saveLastUsedFolder(folder.id);
+
+    // Add the job to this new folder
+    addJobToFolder(jobIndex, folder.id);
+}
+
+function generateCSV(jobs) {
+    const headers = ['Job Title', 'Company', 'Location', 'Salary', 'Posted Date', 'URL'];
+    const rows = jobs.map(job => [
+        job.job_title || '',
+        job.company || '',
+        job.location || '',
+        job.salary_string || '',
+        job.date_posted || '',
+        job.url || ''
+    ]);
+
+    const csvContent = [headers, ...rows]
+        .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+        .join('\n');
+
+    return csvContent;
+}
+
+function downloadFile(content, filename, mimeType) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
 // Helper functions
 function showLoading(show) {
     elements.loadingOverlay.style.display = show ? 'flex' : 'none';
@@ -506,3 +1277,14 @@ function escapeHtml(text) {
 window.goToPage = goToPage;
 window.analyzeJob = analyzeJob;
 window.closeModal = closeModal;
+window.deleteHistoryItem = deleteHistoryItem;
+window.loadSearchFromHistory = loadSearchFromHistory;
+window.showJobDetails = showJobDetails;
+window.toggleRawData = toggleRawData;
+window.showFolderPicker = showFolderPicker;
+window.toggleJobInFolder = toggleJobInFolder;
+window.quickCreateFolder = quickCreateFolder;
+window.toggleFolderExpand = toggleFolderExpand;
+window.exportFolder = exportFolder;
+window.deleteFolder = deleteFolder;
+window.removeJobFromFolder = removeJobFromFolder;
