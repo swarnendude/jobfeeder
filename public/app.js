@@ -245,8 +245,10 @@ async function performSearch() {
 
         totalResults = data.total || data.metadata?.total_results || 0;
         jobsCache = data.data || [];
-        console.log(`Got ${jobsCache.length} jobs out of ${totalResults} total`);
-        displayResults(jobsCache);
+        const isCached = data._cached;
+        const cacheAge = data._cacheAge;
+        console.log(`Got ${jobsCache.length} jobs out of ${totalResults} total${isCached ? ` (cached: ${cacheAge})` : ''}`);
+        displayResults(jobsCache, isCached, cacheAge);
         updatePagination();
 
         // Save to history on first page only
@@ -264,9 +266,14 @@ async function performSearch() {
 }
 
 // Display search results
-function displayResults(jobs) {
+function displayResults(jobs, isCached = false, cacheAge = null) {
     elements.resultsSection.style.display = 'block';
-    elements.resultsCount.textContent = `${totalResults.toLocaleString()} job${totalResults !== 1 ? 's' : ''} found`;
+
+    let countText = `${totalResults.toLocaleString()} job${totalResults !== 1 ? 's' : ''} found`;
+    if (isCached && cacheAge) {
+        countText += ` <span class="cache-badge" title="Results from cache">Cached (${cacheAge})</span>`;
+    }
+    elements.resultsCount.innerHTML = countText;
 
     if (jobs.length === 0) {
         elements.jobResults.innerHTML = `

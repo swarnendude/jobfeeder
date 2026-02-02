@@ -22,22 +22,125 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 // Initialize Anthropic client
 const anthropic = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
 
+// Cache Configuration
+const CACHE_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours in milliseconds
+const searchCache = new Map();
+
+// Cache helper functions
+function getCacheKey(params) {
+    // Create a stable cache key from search parameters
+    const sortedParams = Object.keys(params)
+        .sort()
+        .reduce((obj, key) => {
+            obj[key] = params[key];
+            return obj;
+        }, {});
+    return JSON.stringify(sortedParams);
+}
+
+function getFromCache(key) {
+    const cached = searchCache.get(key);
+    if (!cached) return null;
+
+    const now = Date.now();
+    if (now - cached.timestamp > CACHE_TTL_MS) {
+        // Cache expired
+        searchCache.delete(key);
+        return null;
+    }
+
+    return cached.data;
+}
+
+function setInCache(key, data) {
+    searchCache.set(key, {
+        data,
+        timestamp: Date.now()
+    });
+}
+
+function getCacheStats() {
+    const now = Date.now();
+    let validEntries = 0;
+    let expiredEntries = 0;
+
+    for (const [key, value] of searchCache.entries()) {
+        if (now - value.timestamp > CACHE_TTL_MS) {
+            expiredEntries++;
+        } else {
+            validEntries++;
+        }
+    }
+
+    return { validEntries, expiredEntries, totalEntries: searchCache.size };
+}
+
+// Cleanup expired cache entries periodically (every hour)
+setInterval(() => {
+    const now = Date.now();
+    let cleaned = 0;
+    for (const [key, value] of searchCache.entries()) {
+        if (now - value.timestamp > CACHE_TTL_MS) {
+            searchCache.delete(key);
+            cleaned++;
+        }
+    }
+    if (cleaned > 0) {
+        console.log(`Cache cleanup: removed ${cleaned} expired entries`);
+    }
+}, 60 * 60 * 1000); // Run every hour
+
 // Health check
 app.get('/api/health', (req, res) => {
     res.json({
         status: 'ok',
         theirstack: !!THEIRSTACK_API_KEY,
-        claude: !!ANTHROPIC_API_KEY
+        claude: !!ANTHROPIC_API_KEY,
+        cache: getCacheStats()
     });
 });
 
-// Job search endpoint
+// Cache management endpoint
+app.delete('/api/cache', (req, res) => {
+    const stats = getCacheStats();
+    searchCache.clear();
+    res.json({
+        message: 'Cache cleared',
+        entriesCleared: stats.totalEntries
+    });
+});
+
+// Get cache info
+app.get('/api/cache', (req, res) => {
+    const stats = getCacheStats();
+    res.json({
+        ...stats,
+        ttlHours: CACHE_TTL_MS / (60 * 60 * 1000)
+    });
+});
+
+// Job search endpoint with caching
 app.post('/api/jobs/search', async (req, res) => {
     if (!THEIRSTACK_API_KEY) {
         return res.status(500).json({ error: 'Theirstack API key not configured' });
     }
 
     try {
+        // Check cache first
+        const cacheKey = getCacheKey(req.body);
+        const cachedData = getFromCache(cacheKey);
+
+        if (cachedData) {
+            console.log('Cache HIT for query:', req.body.job_title_pattern_or?.join(', ') || 'unknown');
+            return res.json({
+                ...cachedData,
+                _cached: true,
+                _cacheAge: Math.round((Date.now() - searchCache.get(cacheKey).timestamp) / 1000 / 60) + ' minutes'
+            });
+        }
+
+        console.log('Cache MISS for query:', req.body.job_title_pattern_or?.join(', ') || 'unknown');
+
         const response = await fetch(`${THEIRSTACK_API_URL}/jobs/search`, {
             method: 'POST',
             headers: {
@@ -55,7 +158,12 @@ app.post('/api/jobs/search', async (req, res) => {
         }
 
         const data = await response.json();
-        res.json(data);
+
+        // Store in cache
+        setInCache(cacheKey, data);
+        console.log('Cached results for query:', req.body.job_title_pattern_or?.join(', ') || 'unknown');
+
+        res.json({ ...data, _cached: false });
     } catch (error) {
         console.error('Job search error:', error);
         res.status(500).json({ error: 'Failed to search jobs' });
