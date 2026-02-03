@@ -29,6 +29,49 @@ body {
     display: flex;
 }
 
+/* === Main Navigation === */
+.main-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+}
+
+.nav-brand {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    text-decoration: none;
+}
+
+.nav-brand:hover {
+    color: var(--primary-hover);
+}
+
+.nav-links {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.nav-link {
+    padding: 0.5rem 1rem;
+    color: var(--text-secondary);
+    text-decoration: none;
+    border-radius: 8px;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.nav-link:hover {
+    background: rgba(37, 99, 235, 0.1);
+    color: var(--primary-color);
+}
+
+.nav-link.active {
+    background: var(--primary-color);
+    color: white;
+}
+
 /* Search History Sidebar */
 .search-history-sidebar {
     width: 280px;
@@ -1452,5 +1495,1017 @@ header h1 {
         width: 28px;
         height: 28px;
         font-size: 0.9rem;
+    }
+}
+
+/* === Company Insights Styles === */
+
+.company-insights {
+    margin-top: 1.5rem;
+    padding: 1.25rem;
+    background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+    border-radius: 12px;
+    border: 1px solid #bae6fd;
+}
+
+.company-insights h4 {
+    font-size: 1.1rem;
+    color: var(--text-primary);
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid #7dd3fc;
+}
+
+.insight-section {
+    margin-bottom: 1.25rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid rgba(125, 211, 252, 0.3);
+}
+
+.insight-section:last-of-type {
+    margin-bottom: 0.5rem;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.insight-label {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #0369a1;
+    background: rgba(14, 165, 233, 0.1);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    margin-bottom: 0.5rem;
+}
+
+.insight-section p {
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    line-height: 1.6;
+    margin-top: 0.5rem;
+}
+
+.insight-section ul {
+    margin-top: 0.5rem;
+    padding-left: 1.25rem;
+}
+
+.insight-section ul li {
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    line-height: 1.5;
+    margin-bottom: 0.35rem;
+}
+
+.insight-section.positive .insight-label {
+    color: #166534;
+    background: rgba(34, 197, 94, 0.15);
+}
+
+.insight-section.positive ul li {
+    color: #166534;
+}
+
+.insight-section.warning .insight-label {
+    color: #9a3412;
+    background: rgba(249, 115, 22, 0.15);
+}
+
+.insight-section.warning ul li {
+    color: #9a3412;
+}
+
+.insight-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.insight-tag {
+    display: inline-block;
+    padding: 0.3rem 0.6rem;
+    background: rgba(255, 255, 255, 0.8);
+    border: 1px solid rgba(14, 165, 233, 0.3);
+    border-radius: 20px;
+    font-size: 0.8rem;
+    color: var(--text-primary);
+}
+
+.insight-tag.benefit {
+    background: rgba(34, 197, 94, 0.1);
+    border-color: rgba(34, 197, 94, 0.3);
+    color: #166534;
+}
+
+.insight-tag.tech {
+    background: rgba(139, 92, 246, 0.1);
+    border-color: rgba(139, 92, 246, 0.3);
+    color: #6d28d9;
+}
+
+.insight-timestamp {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 1rem;
+    text-align: right;
+}
+
+/* Saved Job Details Modal */
+
+.saved-job-content {
+    padding: 1rem 0;
+}
+
+.job-meta-section {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+    padding: 1rem;
+    background: var(--background);
+    border-radius: 8px;
+}
+
+.meta-item {
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+.meta-item strong {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.meta-item a {
+    color: var(--primary-color);
+    text-decoration: none;
+}
+
+.meta-item a:hover {
+    text-decoration: underline;
+}
+
+.job-description {
+    margin-bottom: 1.25rem;
+}
+
+.job-description h4 {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+}
+
+.job-description p {
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    line-height: 1.6;
+    white-space: pre-wrap;
+}
+
+.company-insights-container {
+    min-height: 100px;
+}
+
+.insights-loading,
+.insights-pending,
+.insights-error,
+.insights-unavailable {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    text-align: center;
+    color: var(--text-secondary);
+    background: var(--background);
+    border-radius: 8px;
+}
+
+.insights-loading .spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--border-color);
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 1rem;
+}
+
+.insights-error button {
+    margin-top: 0.75rem;
+    padding: 0.5rem 1rem;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.insights-error button:hover {
+    background: var(--primary-hover);
+}
+
+/* Folder job item clickable state */
+.folder-job-item {
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.1s;
+}
+
+.folder-job-item:hover {
+    background: rgba(37, 99, 235, 0.05);
+    transform: translateX(2px);
+}
+
+/* === Companies Page Styles === */
+
+body.companies-page {
+    display: block;
+}
+
+.companies-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+.companies-container header {
+    margin-bottom: 2rem;
+}
+
+.companies-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    background: var(--card-bg);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+}
+
+.companies-stats {
+    display: flex;
+    gap: 2rem;
+}
+
+.stat-item {
+    text-align: center;
+}
+
+.stat-value {
+    display: block;
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.stat-label {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.companies-filters {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.search-input {
+    padding: 0.6rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    width: 250px;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.filter-select {
+    padding: 0.6rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    background: white;
+    cursor: pointer;
+}
+
+.companies-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 1.5rem;
+}
+
+.company-card {
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 1.25rem;
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid transparent;
+}
+
+.company-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+    border-color: var(--primary-color);
+}
+
+.company-card-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.company-card-logo {
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+    object-fit: contain;
+    background: var(--background);
+}
+
+.company-card-logo-placeholder {
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, var(--primary-color), #60a5fa);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.company-card-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.company-card-name {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.company-card-domain {
+    font-size: 0.85rem;
+    color: var(--primary-color);
+    text-decoration: none;
+}
+
+.company-card-domain:hover {
+    text-decoration: underline;
+}
+
+.company-status {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+.status-completed {
+    background: rgba(34, 197, 94, 0.1);
+    color: #16a34a;
+}
+
+.status-processing,
+.status-pending {
+    background: rgba(59, 130, 246, 0.1);
+    color: #2563eb;
+}
+
+.status-failed {
+    background: rgba(239, 68, 68, 0.1);
+    color: #dc2626;
+}
+
+.company-card-summary {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+    line-height: 1.5;
+}
+
+.company-card-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.company-card-tag {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    background: var(--background);
+    border-radius: 4px;
+    color: var(--text-secondary);
+}
+
+.company-card-tech {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.tech-tag-small {
+    font-size: 0.7rem;
+    padding: 0.2rem 0.4rem;
+    background: rgba(139, 92, 246, 0.1);
+    color: #7c3aed;
+    border-radius: 3px;
+}
+
+.tech-tag-more {
+    font-size: 0.7rem;
+    padding: 0.2rem 0.4rem;
+    background: var(--background);
+    color: var(--text-secondary);
+    border-radius: 3px;
+}
+
+/* Empty and loading states */
+.empty-state,
+.error-state,
+.loading-companies {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 4rem 2rem;
+    background: var(--card-bg);
+    border-radius: 12px;
+}
+
+.empty-state h3 {
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.empty-state p,
+.error-state p {
+    color: var(--text-secondary);
+}
+
+.btn-retry {
+    margin-top: 1rem;
+    padding: 0.5rem 1.5rem;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.btn-retry:hover {
+    background: var(--primary-hover);
+}
+
+/* Company Detail Modal */
+.modal-large {
+    max-width: 800px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.company-detail {
+    padding: 1rem;
+}
+
+.company-detail-header {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.company-detail-logo {
+    width: 80px;
+    height: 80px;
+    border-radius: 12px;
+    object-fit: contain;
+    background: var(--background);
+}
+
+.company-detail-logo-placeholder {
+    width: 80px;
+    height: 80px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--primary-color), #60a5fa);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    font-weight: 600;
+}
+
+.company-detail-info h2 {
+    font-size: 1.5rem;
+    margin-bottom: 0.25rem;
+}
+
+.company-detail-link {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-size: 0.95rem;
+    margin-right: 1rem;
+}
+
+.company-detail-link:hover {
+    text-decoration: underline;
+}
+
+.company-detail-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 1rem;
+    padding: 1.25rem;
+    background: var(--background);
+    border-radius: 10px;
+    margin-bottom: 2rem;
+}
+
+.detail-stat {
+    text-align: center;
+}
+
+.detail-stat-value {
+    display: block;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.detail-stat-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+}
+
+.company-enriched-data {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.enriched-section {
+    padding: 1.25rem;
+    background: var(--background);
+    border-radius: 10px;
+}
+
+.enriched-section h4 {
+    font-size: 0.9rem;
+    color: var(--primary-color);
+    margin-bottom: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.enriched-section p {
+    color: var(--text-primary);
+    line-height: 1.6;
+}
+
+.enriched-section.positive {
+    background: rgba(34, 197, 94, 0.05);
+    border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.enriched-section.positive h4 {
+    color: #16a34a;
+}
+
+.enriched-section.warning {
+    background: rgba(249, 115, 22, 0.05);
+    border: 1px solid rgba(249, 115, 22, 0.2);
+}
+
+.enriched-section.warning h4 {
+    color: #ea580c;
+}
+
+.enriched-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.enriched-tag {
+    padding: 0.35rem 0.75rem;
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+}
+
+.enriched-tag.benefit {
+    background: rgba(34, 197, 94, 0.1);
+    border-color: rgba(34, 197, 94, 0.3);
+    color: #166534;
+}
+
+.enriched-tag.tech {
+    background: rgba(139, 92, 246, 0.1);
+    border-color: rgba(139, 92, 246, 0.3);
+    color: #6d28d9;
+}
+
+.enriched-list {
+    padding-left: 1.25rem;
+    margin: 0;
+}
+
+.enriched-list li {
+    margin-bottom: 0.5rem;
+    line-height: 1.5;
+}
+
+.leadership-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.leader-item {
+    background: white;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.leader-name {
+    display: block;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.leader-title {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.social-links {
+    display: flex;
+    gap: 1rem;
+}
+
+.social-links a {
+    color: var(--primary-color);
+    text-decoration: none;
+}
+
+.social-links a:hover {
+    text-decoration: underline;
+}
+
+.scrape-timestamp {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    text-align: right;
+    margin-top: 1rem;
+}
+
+.enrichment-pending,
+.enrichment-failed {
+    text-align: center;
+    padding: 3rem 2rem;
+    background: var(--background);
+    border-radius: 10px;
+}
+
+.enrichment-pending .spinner {
+    margin: 0 auto 1rem;
+}
+
+.enrichment-failed .error-detail {
+    font-size: 0.85rem;
+    color: var(--error-color);
+    margin-top: 0.5rem;
+}
+
+/* Responsive for companies page */
+@media (max-width: 768px) {
+    .companies-container {
+        padding: 1rem;
+    }
+
+    .companies-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .companies-stats {
+        justify-content: space-around;
+    }
+
+    .companies-filters {
+        flex-direction: column;
+    }
+
+    .search-input {
+        width: 100%;
+    }
+
+    .filter-select {
+        width: 100%;
+    }
+
+    .companies-list {
+        grid-template-columns: 1fr;
+    }
+
+    .company-detail-header {
+        flex-direction: column;
+        text-align: center;
+    }
+
+    .company-detail-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* === Contact Cards and GTM Section === */
+
+.gtm-assessment {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), rgba(59, 130, 246, 0.05));
+    border: 1px solid rgba(139, 92, 246, 0.2);
+}
+
+.gtm-assessment h4 {
+    color: #7c3aed;
+}
+
+.contacts-section {
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.05), rgba(6, 182, 212, 0.05));
+    border: 1px solid rgba(37, 99, 235, 0.2);
+}
+
+.contacts-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.contacts-header h4 {
+    margin-bottom: 0;
+}
+
+.btn-enrich-contacts {
+    padding: 0.5rem 1rem;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-enrich-contacts:hover {
+    background: var(--primary-hover);
+}
+
+.btn-enrich-contacts:disabled {
+    background: var(--secondary-color);
+    cursor: not-allowed;
+}
+
+.contacts-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.contact-card {
+    background: white;
+    border-radius: 10px;
+    padding: 1rem;
+    border-left: 4px solid var(--secondary-color);
+    transition: all 0.2s;
+}
+
+.contact-card.priority-high {
+    border-left-color: #22c55e;
+}
+
+.contact-card.priority-medium {
+    border-left-color: #f59e0b;
+}
+
+.contact-card.priority-low {
+    border-left-color: #94a3b8;
+}
+
+.contact-main {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.5rem;
+}
+
+.contact-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.contact-name {
+    font-weight: 600;
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+
+.contact-title {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.contact-department {
+    font-size: 0.8rem;
+    color: var(--primary-color);
+    margin-top: 0.25rem;
+}
+
+.contact-priority {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+}
+
+.contact-priority.priority-high {
+    background: rgba(34, 197, 94, 0.1);
+    color: #16a34a;
+}
+
+.contact-priority.priority-medium {
+    background: rgba(245, 158, 11, 0.1);
+    color: #d97706;
+}
+
+.contact-priority.priority-low {
+    background: rgba(148, 163, 184, 0.2);
+    color: #64748b;
+}
+
+.contact-relevance {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin: 0.5rem 0;
+    font-style: italic;
+}
+
+.contact-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+
+.btn-contact-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.35rem 0.75rem;
+    font-size: 0.8rem;
+    text-decoration: none;
+    border-radius: 6px;
+    transition: all 0.2s;
+    background: var(--background);
+    color: var(--primary-color);
+    border: 1px solid var(--border-color);
+}
+
+.btn-contact-link:hover {
+    background: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+}
+
+.btn-contact-link.email {
+    background: rgba(34, 197, 94, 0.1);
+    border-color: rgba(34, 197, 94, 0.3);
+    color: #16a34a;
+}
+
+.btn-contact-link.email:hover {
+    background: #22c55e;
+    color: white;
+}
+
+.btn-contact-link.phone {
+    background: rgba(59, 130, 246, 0.1);
+    border-color: rgba(59, 130, 246, 0.3);
+    color: #2563eb;
+}
+
+.btn-contact-link.phone:hover {
+    background: #3b82f6;
+    color: white;
+}
+
+.btn-lookup {
+    padding: 0.35rem 0.75rem;
+    font-size: 0.8rem;
+    background: rgba(139, 92, 246, 0.1);
+    color: #7c3aed;
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-lookup:hover {
+    background: #8b5cf6;
+    color: white;
+}
+
+.contact-enriched-badge {
+    display: inline-block;
+    font-size: 0.75rem;
+    color: #16a34a;
+    margin-top: 0.5rem;
+}
+
+.recommended-roles {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(37, 99, 235, 0.1);
+}
+
+.recommended-roles h5 {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.75rem;
+}
+
+.roles-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.role-tag {
+    padding: 0.35rem 0.75rem;
+    background: rgba(37, 99, 235, 0.1);
+    color: var(--primary-color);
+    border-radius: 20px;
+    font-size: 0.8rem;
+    border: 1px solid rgba(37, 99, 235, 0.2);
+}
+
+/* Responsive adjustments for contacts */
+@media (max-width: 600px) {
+    .contacts-header {
+        flex-direction: column;
+        gap: 0.75rem;
+        align-items: stretch;
+    }
+
+    .btn-enrich-contacts {
+        width: 100%;
+    }
+
+    .contact-main {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .contact-actions {
+        flex-direction: column;
+    }
+
+    .btn-contact-link,
+    .btn-lookup {
+        width: 100%;
+        justify-content: center;
     }
 }

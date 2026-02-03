@@ -942,6 +942,8 @@ function addJobToFolder(index, folderId) {
         url: job.url || job.final_url,
         salary_string: job.salary_string,
         date_posted: job.date_posted,
+        description: job.description,
+        company_object: company,
         addedAt: new Date().toISOString()
     };
 
@@ -958,6 +960,11 @@ function addJobToFolder(index, folderId) {
     updateTotalJobsCount();
     displayResults(jobsCache);
     closeModal();
+
+    // Trigger company enrichment in background
+    if (company.domain) {
+        triggerCompanyEnrichment(company);
+    }
 }
 
 function removeJobFromFolder(jobId, folderId) {
@@ -1039,11 +1046,11 @@ function renderFolders() {
             <div class="folder-jobs">
                 ${folder.jobs.length === 0 ? '<p class="no-folder-jobs">No jobs in this folder</p>' :
                     folder.jobs.map(job => `
-                        <div class="folder-job-item">
-                            <button class="folder-job-remove" onclick="removeJobFromFolder('${job.id}', '${folder.id}')">&times;</button>
+                        <div class="folder-job-item" onclick="showSavedJobDetails('${job.id}', '${folder.id}')">
+                            <button class="folder-job-remove" onclick="event.stopPropagation(); removeJobFromFolder('${job.id}', '${folder.id}')">&times;</button>
                             <div class="folder-job-title">${escapeHtml(job.job_title)}</div>
                             <div class="folder-job-company">${escapeHtml(job.company)}</div>
-                            ${job.url ? `<a href="${escapeHtml(job.url)}" target="_blank" class="folder-job-link">View</a>` : ''}
+                            ${job.url ? `<a href="${escapeHtml(job.url)}" target="_blank" class="folder-job-link" onclick="event.stopPropagation()">View</a>` : ''}
                         </div>
                     `).join('')
                 }
@@ -1280,6 +1287,265 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// === Company Enrichment Functions ===
+
+async function triggerCompanyEnrichment(company) {
+    if (!company.domain) return;
+
+    try {
+        const response = await fetch('/api/companies/enrich', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                domain: company.domain,
+                name: company.name,
+                theirstack_data: company
+            })
+        });
+
+        if (!response.ok) {
+            console.warn('Company enrichment request failed:', await response.text());
+            return;
+        }
+
+        const result = await response.json();
+        console.log(`Company enrichment: ${result.status} for ${company.domain}`);
+
+    } catch (error) {
+        console.error('Failed to trigger company enrichment:', error);
+        // Non-blocking - don't show error to user
+    }
+}
+
+async function fetchCompanyInsights(domain) {
+    try {
+        const response = await fetch(`/api/companies/${encodeURIComponent(domain)}`);
+
+        if (!response.ok) {
+            if (response.status === 404) {
+                return null;
+            }
+            throw new Error('Failed to fetch company data');
+        }
+
+        return await response.json();
+    } catch (error) {
+        console.error('Error fetching company insights:', error);
+        return null;
+    }
+}
+
+function renderCompanyInsights(companyData) {
+    if (!companyData || !companyData.enriched_data) {
+        return '';
+    }
+
+    const data = companyData.enriched_data;
+
+    let html = '<div class="company-insights">';
+    html += '<h4>Company Insights</h4>';
+
+    // Company Summary
+    if (data.company_summary) {
+        html += `
+            <div class="insight-section">
+                <span class="insight-label">About</span>
+                <p>${escapeHtml(data.company_summary)}</p>
+            </div>
+        `;
+    }
+
+    // Work Culture Assessment
+    if (data.work_culture_assessment) {
+        html += `
+            <div class="insight-section">
+                <span class="insight-label">Culture</span>
+                <p>${escapeHtml(data.work_culture_assessment)}</p>
+            </div>
+        `;
+    }
+
+    // Culture Values
+    if (data.culture_values && data.culture_values.length > 0) {
+        html += `
+            <div class="insight-section">
+                <span class="insight-label">Values</span>
+                <div class="insight-tags">
+                    ${data.culture_values.map(v => `<span class="insight-tag">${escapeHtml(v)}</span>`).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    // Benefits
+    if (data.benefits && data.benefits.length > 0) {
+        html += `
+            <div class="insight-section">
+                <span class="insight-label">Benefits</span>
+                <div class="insight-tags">
+                    ${data.benefits.map(b => `<span class="insight-tag benefit">${escapeHtml(b)}</span>`).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    // Remote Policy
+    if (data.remote_policy) {
+        html += `
+            <div class="insight-section">
+                <span class="insight-label">Remote Policy</span>
+                <p>${escapeHtml(data.remote_policy)}</p>
+            </div>
+        `;
+    }
+
+    // Growth Signals
+    if (data.growth_signals && data.growth_signals.length > 0) {
+        html += `
+            <div class="insight-section positive">
+                <span class="insight-label">Growth Signals</span>
+                <ul>
+                    ${data.growth_signals.map(s => `<li>${escapeHtml(s)}</li>`).join('')}
+                </ul>
+            </div>
+        `;
+    }
+
+    // Red Flags
+    if (data.red_flags && data.red_flags.length > 0) {
+        html += `
+            <div class="insight-section warning">
+                <span class="insight-label">Things to Consider</span>
+                <ul>
+                    ${data.red_flags.map(f => `<li>${escapeHtml(f)}</li>`).join('')}
+                </ul>
+            </div>
+        `;
+    }
+
+    // Tech Stack
+    if (data.tech_stack && data.tech_stack.length > 0) {
+        html += `
+            <div class="insight-section">
+                <span class="insight-label">Tech Stack</span>
+                <div class="insight-tags">
+                    ${data.tech_stack.map(t => `<span class="insight-tag tech">${escapeHtml(t)}</span>`).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    // Products/Services
+    if (data.products && data.products.length > 0) {
+        html += `
+            <div class="insight-section">
+                <span class="insight-label">Products/Services</span>
+                <ul>
+                    ${data.products.map(p => `<li>${escapeHtml(p)}</li>`).join('')}
+                </ul>
+            </div>
+        `;
+    }
+
+    // Scrape timestamp
+    if (data.scrape_timestamp) {
+        const scrapeDate = new Date(data.scrape_timestamp);
+        html += `<p class="insight-timestamp">Data collected: ${scrapeDate.toLocaleDateString()}</p>`;
+    }
+
+    html += '</div>';
+    return html;
+}
+
+async function showSavedJobDetails(jobId, folderId) {
+    const folder = jobFolders.find(f => f.id === folderId);
+    if (!folder) return;
+
+    const job = folder.jobs.find(j => j.id === jobId);
+    if (!job) return;
+
+    const company = job.company_object || {};
+    const companyName = job.company || 'Unknown Company';
+
+    // Show modal with loading state
+    elements.modalBody.innerHTML = `
+        <div class="modal-header">
+            <h2>${escapeHtml(job.job_title)}</h2>
+            <p>${escapeHtml(companyName)}</p>
+        </div>
+        <div class="saved-job-content">
+            <div class="job-meta-section">
+                <div class="meta-item"><strong>Location:</strong> ${escapeHtml(job.location || 'Not specified')}</div>
+                ${job.salary_string ? `<div class="meta-item"><strong>Salary:</strong> ${escapeHtml(job.salary_string)}</div>` : ''}
+                ${job.date_posted ? `<div class="meta-item"><strong>Posted:</strong> ${formatDate(job.date_posted)}</div>` : ''}
+                ${job.url ? `<div class="meta-item"><a href="${escapeHtml(job.url)}" target="_blank" rel="noopener">View Original Job Posting</a></div>` : ''}
+            </div>
+            ${job.description ? `<div class="job-description"><h4>Description</h4><p>${escapeHtml(job.description).substring(0, 1000)}${job.description.length > 1000 ? '...' : ''}</p></div>` : ''}
+            <div class="company-insights-container">
+                <div class="insights-loading">
+                    <div class="spinner"></div>
+                    <p>Loading company insights...</p>
+                </div>
+            </div>
+        </div>
+    `;
+    elements.jobModal.style.display = 'flex';
+
+    // Fetch company insights if we have a domain
+    if (company.domain) {
+        const companyData = await fetchCompanyInsights(company.domain);
+        const insightsContainer = document.querySelector('.company-insights-container');
+
+        if (companyData && companyData.enriched_data) {
+            insightsContainer.innerHTML = renderCompanyInsights(companyData);
+        } else if (companyData && companyData.enrichment_status === 'processing') {
+            insightsContainer.innerHTML = `
+                <div class="insights-pending">
+                    <p>Company insights are being collected. Check back in a few minutes.</p>
+                </div>
+            `;
+        } else if (companyData && companyData.enrichment_status === 'failed') {
+            insightsContainer.innerHTML = `
+                <div class="insights-error">
+                    <p>Unable to collect company insights. <button onclick="retryEnrichment('${escapeHtml(company.domain)}')">Retry</button></p>
+                </div>
+            `;
+        } else {
+            insightsContainer.innerHTML = `
+                <div class="insights-unavailable">
+                    <p>Company insights not available.</p>
+                </div>
+            `;
+        }
+    } else {
+        const insightsContainer = document.querySelector('.company-insights-container');
+        insightsContainer.innerHTML = `
+            <div class="insights-unavailable">
+                <p>Company domain not available for insights.</p>
+            </div>
+        `;
+    }
+}
+
+async function retryEnrichment(domain) {
+    try {
+        const response = await fetch(`/api/companies/${encodeURIComponent(domain)}/retry`, {
+            method: 'POST'
+        });
+
+        if (response.ok) {
+            const insightsContainer = document.querySelector('.company-insights-container');
+            insightsContainer.innerHTML = `
+                <div class="insights-pending">
+                    <p>Retrying company data collection. Check back in a few minutes.</p>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Failed to retry enrichment:', error);
+    }
+}
+
 // Global functions for inline handlers
 window.goToPage = goToPage;
 window.analyzeJob = analyzeJob;
@@ -1295,3 +1561,5 @@ window.toggleFolderExpand = toggleFolderExpand;
 window.exportFolder = exportFolder;
 window.deleteFolder = deleteFolder;
 window.removeJobFromFolder = removeJobFromFolder;
+window.showSavedJobDetails = showSavedJobDetails;
+window.retryEnrichment = retryEnrichment;

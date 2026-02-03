@@ -3,12 +3,18 @@ import express from 'express';
 import Anthropic from '@anthropic-ai/sdk';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { initializeDatabase } from './db.js';
+import { CompanyEnricher } from './enrichment.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Database and enricher (initialized async)
+let db = null;
+let enricher = null;
 
 // Middleware
 app.use(express.json());
@@ -312,13 +318,256 @@ Rank from best to worst fit.`
     }
 });
 
+// === Company Enrichment Endpoints ===
+
+// Trigger enrichment for a company
+app.post('/api/companies/enrich', async (req, res) => {
+    if (!db || !enricher) {
+        return res.status(503).json({ error: 'Database not initialized' });
+    }
+
+    const { domain, name, theirstack_data } = req.body;
+
+    if (!domain || !name) {
+        return res.status(400).json({ error: 'Domain and name are required' });
+    }
+
+    try {
+        // Check if company exists
+        let company = db.getCompany(domain);
+
+        if (company) {
+            if (company.enrichment_status === 'completed') {
+                return res.json({
+                    company_id: company.id,
+                    status: 'exists',
+                    message: 'Company already enriched'
+                });
+            }
+
+            if (company.enrichment_status === 'processing') {
+                return res.json({
+                    company_id: company.id,
+                    status: 'processing',
+                    message: 'Enrichment in progress'
+                });
+            }
+        } else {
+            // Create new company record
+            const companyId = db.createCompany(domain, name, theirstack_data);
+            company = { id: companyId };
+        }
+
+        // Trigger async enrichment (non-blocking)
+        enricher.enrichWithRetry(domain, name)
+            .then(result => console.log(`[Server] Enrichment completed for ${domain}`))
+            .catch(error => console.error(`[Server] Enrichment failed for ${domain}:`, error.message));
+
+        res.json({
+            company_id: company.id,
+            status: 'pending',
+            message: 'Enrichment started'
+        });
+
+    } catch (error) {
+        console.error('[Server] Enrichment trigger error:', error);
+        res.status(500).json({ error: 'Failed to start enrichment' });
+    }
+});
+
+// Get company data
+app.get('/api/companies/:domain', (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not initialized' });
+    }
+
+    const { domain } = req.params;
+
+    const company = db.getCompany(domain);
+
+    if (!company) {
+        return res.status(404).json({ error: 'Company not found' });
+    }
+
+    res.json(company);
+});
+
+// Get enrichment status
+app.get('/api/companies/:domain/status', (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not initialized' });
+    }
+
+    const { domain } = req.params;
+
+    const company = db.getCompany(domain);
+
+    if (!company) {
+        return res.status(404).json({ error: 'Company not found' });
+    }
+
+    res.json({
+        domain: company.domain,
+        status: company.enrichment_status,
+        error: company.enrichment_error,
+        attempts: company.enrichment_attempts
+    });
+});
+
+// Retry failed enrichment
+app.post('/api/companies/:domain/retry', async (req, res) => {
+    if (!db || !enricher) {
+        return res.status(503).json({ error: 'Database not initialized' });
+    }
+
+    const { domain } = req.params;
+
+    const company = db.getCompany(domain);
+
+    if (!company) {
+        return res.status(404).json({ error: 'Company not found' });
+    }
+
+    if (company.enrichment_status !== 'failed') {
+        return res.status(400).json({
+            error: 'Company is not in failed state',
+            currentStatus: company.enrichment_status
+        });
+    }
+
+    // Reset for retry
+    db.resetForRetry(domain);
+
+    // Trigger enrichment
+    enricher.enrichWithRetry(domain, company.name)
+        .catch(error => console.error(`[Server] Retry enrichment failed for ${domain}:`, error.message));
+
+    res.json({ status: 'pending', message: 'Retry initiated' });
+});
+
+// Get all companies (admin/debug endpoint)
+app.get('/api/companies', (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not initialized' });
+    }
+
+    const companies = db.getAllCompanies();
+    const stats = db.getStats();
+
+    res.json({ companies, stats });
+});
+
+// Enrich contacts for a company using SignalHire
+app.post('/api/companies/:domain/enrich-contacts', async (req, res) => {
+    if (!db || !enricher) {
+        return res.status(503).json({ error: 'Database or enricher not initialized' });
+    }
+
+    const { domain } = req.params;
+
+    const company = db.getCompany(domain);
+    if (!company) {
+        return res.status(404).json({ error: 'Company not found' });
+    }
+
+    if (!company.enriched_data) {
+        return res.status(400).json({ error: 'Company has not been enriched yet' });
+    }
+
+    const contacts = company.enriched_data.target_contacts || [];
+    if (contacts.length === 0) {
+        return res.status(400).json({ error: 'No target contacts found for this company' });
+    }
+
+    try {
+        // Trigger async contact enrichment
+        enricher.enrichCompanyContacts(domain)
+            .then(result => console.log(`[Server] Contact enrichment completed for ${domain}: ${result.length} contacts`))
+            .catch(error => console.error(`[Server] Contact enrichment failed for ${domain}:`, error.message));
+
+        res.json({
+            status: 'processing',
+            message: `Enriching ${contacts.length} contacts`,
+            contacts_count: contacts.length
+        });
+    } catch (error) {
+        console.error('[Server] Contact enrichment trigger error:', error);
+        res.status(500).json({ error: 'Failed to start contact enrichment' });
+    }
+});
+
+// Search for a specific person's contact info
+app.post('/api/contacts/lookup', async (req, res) => {
+    if (!enricher) {
+        return res.status(503).json({ error: 'Enricher not initialized' });
+    }
+
+    const { name, linkedin_url, company_domain, title } = req.body;
+
+    if (!name && !linkedin_url) {
+        return res.status(400).json({ error: 'Name or LinkedIn URL is required' });
+    }
+
+    try {
+        const contact = {
+            name,
+            linkedin_url,
+            title
+        };
+
+        const enrichedContact = await enricher.lookupContactSignalHire(contact, company_domain);
+
+        if (enrichedContact && enrichedContact.contact_enriched) {
+            res.json({ success: true, contact: enrichedContact });
+        } else {
+            res.json({ success: false, message: 'Contact information not found', contact: enrichedContact });
+        }
+    } catch (error) {
+        console.error('[Server] Contact lookup error:', error);
+        res.status(500).json({ error: 'Failed to lookup contact' });
+    }
+});
+
 // Catch-all for SPA
 app.get('*', (req, res) => {
     res.sendFile(join(__dirname, 'public', 'index.html'));
 });
 
-app.listen(PORT, () => {
-    console.log(`JobFeeder server running on port ${PORT}`);
-    console.log(`Theirstack API: ${THEIRSTACK_API_KEY ? 'Configured' : 'Not configured'}`);
-    console.log(`Claude API: ${ANTHROPIC_API_KEY ? 'Configured' : 'Not configured'}`);
-});
+// Initialize database and start server
+async function startServer() {
+    try {
+        // Initialize database
+        db = await initializeDatabase();
+        console.log('Database initialized');
+
+        // Initialize enricher if any AI provider is configured (Gemini preferred for cost)
+        const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+        const SIGNALHIRE_API_KEY = process.env.SIGNALHIRE_API_KEY;
+
+        if (GEMINI_API_KEY || anthropic) {
+            enricher = new CompanyEnricher({
+                anthropicClient: anthropic,
+                geminiApiKey: GEMINI_API_KEY,
+                db: db,
+                signalHireApiKey: SIGNALHIRE_API_KEY
+            });
+            console.log('Company enricher initialized');
+        } else {
+            console.log('Company enricher not available (need GEMINI_API_KEY or ANTHROPIC_API_KEY)');
+        }
+
+        // Start server
+        app.listen(PORT, () => {
+            console.log(`JobFeeder server running on port ${PORT}`);
+            console.log(`Theirstack API: ${THEIRSTACK_API_KEY ? 'Configured' : 'Not configured'}`);
+            console.log(`Claude API: ${ANTHROPIC_API_KEY ? 'Configured' : 'Not configured'}`);
+            console.log(`Gemini API: ${GEMINI_API_KEY ? 'Configured (used for enrichment)' : 'Not configured'}`);
+            console.log(`SignalHire API: ${SIGNALHIRE_API_KEY ? 'Configured' : 'Not configured'}`);
+        });
+    } catch (error) {
+        console.error('Failed to start server:', error);
+        process.exit(1);
+    }
+}
+
+startServer();

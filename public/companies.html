@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Companies - JobFeeder</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="companies-page">
+    <div class="companies-container">
+        <header>
+            <nav class="main-nav">
+                <a href="/" class="nav-brand">JobFeeder</a>
+                <div class="nav-links">
+                    <a href="/" class="nav-link">Jobs</a>
+                    <a href="/companies.html" class="nav-link active">Companies</a>
+                </div>
+            </nav>
+            <p class="subtitle">Enriched company data from saved jobs</p>
+        </header>
+
+        <div class="companies-header">
+            <div class="companies-stats" id="companiesStats">
+                <div class="stat-item">
+                    <span class="stat-value" id="statTotal">0</span>
+                    <span class="stat-label">Total</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value" id="statCompleted">0</span>
+                    <span class="stat-label">Enriched</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value" id="statProcessing">0</span>
+                    <span class="stat-label">Processing</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value" id="statFailed">0</span>
+                    <span class="stat-label">Failed</span>
+                </div>
+            </div>
+            <div class="companies-filters">
+                <input type="text" id="searchCompanies" placeholder="Search companies..." class="search-input">
+                <select id="filterStatus" class="filter-select">
+                    <option value="all">All Status</option>
+                    <option value="completed">Enriched</option>
+                    <option value="processing">Processing</option>
+                    <option value="pending">Pending</option>
+                    <option value="failed">Failed</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="companiesList" class="companies-list">
+            <div class="loading-companies">
+                <div class="spinner"></div>
+                <p>Loading companies...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Company Detail Modal -->
+    <div id="companyModal" class="modal" style="display: none;">
+        <div class="modal-content modal-large">
+            <button class="modal-close" onclick="closeCompanyModal()">&times;</button>
+            <div id="companyModalBody"></div>
+        </div>
+    </div>
+
+    <script src="companies.js"></script>
+</body>
+</html>

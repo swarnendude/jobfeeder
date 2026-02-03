@@ -7,7 +7,14 @@
       "Bash(del /q \"E:\\\\Projects\\\\jobfeeder\\\\index.html\" \"E:\\\\Projects\\\\jobfeeder\\\\styles.css\" \"E:\\\\Projects\\\\jobfeeder\\\\app.js\")",
       "Bash(del \"E:\\\\Projects\\\\jobfeeder\\\\nul\")",
       "Bash(git reset:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(npm install:*)",
+      "Bash(timeout 10 node:*)",
+      "Bash(curl:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(node --check:*)"
     ]
   }
 }
