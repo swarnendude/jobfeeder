@@ -1,8 +1,65 @@
 // Folder Integration for App.js - PostgreSQL Backend
 // This file extends the existing app.js to integrate with the PostgreSQL folders API
 
-// Load folders from API instead of localStorage
-async function loadJobFolders() {
+// Global map of job IDs to folder info: { jobId: [{ folder_id, folder_name }] }
+window.jobFolderMap = {};
+
+// Cache flags to prevent multiple API calls
+let foldersLoaded = false;
+let mappingsLoaded = false;
+
+// Load job-folder mappings from API (only once per session unless forced)
+async function loadJobFolderMappings(forceReload = false) {
+    if (mappingsLoaded && !forceReload) {
+        console.log('[Folder Integration] Mappings already loaded, skipping API call');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/job-folder-mappings');
+        if (!response.ok) {
+            console.error('Failed to load job-folder mappings');
+            return;
+        }
+
+        const mappings = await response.json();
+
+        // Build map: jobId -> [{ folder_id, folder_name }]
+        window.jobFolderMap = {};
+        mappings.forEach(m => {
+            const jobId = m.theirstack_job_id;
+            if (!window.jobFolderMap[jobId]) {
+                window.jobFolderMap[jobId] = [];
+            }
+            window.jobFolderMap[jobId].push({
+                folder_id: m.folder_id.toString(),
+                folder_name: m.folder_name
+            });
+        });
+
+        mappingsLoaded = true;
+        console.log(`[Folder Integration] Loaded ${mappings.length} job-folder mappings`);
+    } catch (error) {
+        console.error('Error loading job-folder mappings:', error);
+    }
+}
+
+// Get folders containing a job (uses the mapping)
+function getJobFoldersFromMap(job) {
+    const jobId = job.id;
+    if (!jobId || !window.jobFolderMap[jobId]) {
+        return [];
+    }
+    return window.jobFolderMap[jobId];
+}
+
+// Load folders from API instead of localStorage (only once per session unless forced)
+async function loadJobFolders(forceReload = false) {
+    if (foldersLoaded && !forceReload) {
+        console.log('[Folder Integration] Folders already loaded, skipping API call');
+        return;
+    }
+
     try {
         const response = await fetch('/api/folders');
 
@@ -48,7 +105,8 @@ async function loadJobFolders() {
             updateTotalJobsCount();
         }
 
-        console.log(`Loaded ${jobFolders.length} folders from API`);
+        foldersLoaded = true;
+        console.log(`[Folder Integration] Loaded ${jobFolders.length} folders from API`);
     } catch (error) {
         console.error('Error loading folders from API:', error);
         showError('Failed to load folders. Please check your database connection.');
@@ -80,8 +138,8 @@ async function createNewFolderAPI() {
         const folder = await response.json();
         elements.newFolderName.value = '';
 
-        // Reload folders
-        await loadJobFolders();
+        // Force reload folders since we created a new one
+        await loadJobFolders(true);
 
         // Show success message
         showSuccessMessage('Folder created successfully!');
@@ -91,21 +149,67 @@ async function createNewFolderAPI() {
     }
 }
 
-// Add job to folder using API
+// Flag to prevent modal from reopening during add operation
+let isAddingToFolder = false;
+
+// Add job to folder using API with optimistic UI
 async function addJobToFolderAPI(index, folderId) {
+    // Prevent re-entry
+    if (isAddingToFolder) return;
+    isAddingToFolder = true;
+
     const job = jobsCache[index];
-    if (!job) return;
+    if (!job) {
+        isAddingToFolder = false;
+        return;
+    }
 
     const company = job.company_object || {};
     const companyName = company.name || job.company || 'Unknown Company';
     const companyDomain = company.domain || job.company_domain || extractDomain(companyName);
 
+    // Get folder name for the message
+    const folder = jobFolders.find(f => f.id == folderId);
+    const folderName = folder ? folder.name : 'folder';
+
+    // OPTIMISTIC UI: Close modal and show success immediately
+    if (typeof closeModal === 'function') {
+        closeModal();
+    }
+    showSuccessMessage(`Added to "${folderName}"`);
+
+    // Optimistically update the local job-folder map
+    const jobId = job.id;
+    if (jobId) {
+        if (!window.jobFolderMap[jobId]) {
+            window.jobFolderMap[jobId] = [];
+        }
+        // Check if already in this folder
+        const alreadyIn = window.jobFolderMap[jobId].some(f => f.folder_id === folderId.toString());
+        if (!alreadyIn) {
+            window.jobFolderMap[jobId].push({
+                folder_id: folderId.toString(),
+                folder_name: folderName
+            });
+        }
+    }
+
+    // Re-render current results to update folder indicators immediately
+    if (typeof displayResults === 'function' && typeof jobsCache !== 'undefined') {
+        displayResults(jobsCache.slice(currentPage * 50, (currentPage + 1) * 50));
+    }
+
+    // Reset flag after a short delay to allow UI to settle
+    setTimeout(() => { isAddingToFolder = false; }, 500);
+
+    // Make API call in background
     try {
         const response = await fetch(`/api/folders/${folderId}/jobs`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 id: job.id,
+                theirstack_job_id: job.id,
                 job_title: job.job_title,
                 company: companyName,
                 domain: companyDomain,
@@ -125,31 +229,92 @@ async function addJobToFolderAPI(index, folderId) {
             throw new Error('Failed to add job to folder');
         }
 
-        const result = await response.json();
+        // No need to reload - optimistic update is already in place
+        // The mapping will be refreshed on next page load or when picker is opened
 
-        // Get folder name for the message
-        const folder = jobFolders.find(f => f.id == folderId);
-        const folderName = folder ? folder.name : 'folder';
+    } catch (error) {
+        console.error('Error adding job to folder:', error);
 
-        // Show success message with job and folder details
-        showSuccessMessage(`✅ "${job.job_title}" at ${companyName} added to "${folderName}"`);
+        // Revert optimistic update on failure
+        if (jobId && window.jobFolderMap[jobId]) {
+            window.jobFolderMap[jobId] = window.jobFolderMap[jobId].filter(
+                f => f.folder_id !== folderId.toString()
+            );
+        }
 
-        // Reload folders to reflect changes
-        await loadJobFolders();
+        // Show error
+        showError('Failed to add job to folder. Please try again.');
 
-        // Re-render current results to update folder indicators
+        // Re-render to show reverted state
+        if (typeof displayResults === 'function' && typeof jobsCache !== 'undefined') {
+            displayResults(jobsCache.slice(currentPage * 50, (currentPage + 1) * 50));
+        }
+    }
+}
+
+// Remove job from folder using API with optimistic UI
+async function removeJobFromFolderAPI(index, folderId) {
+    const job = jobsCache[index];
+    if (!job) return;
+
+    const jobId = job.id;
+    if (!jobId) return;
+
+    // Get folder name for the message
+    const folder = jobFolders.find(f => f.id == folderId);
+    const folderName = folder ? folder.name : 'folder';
+
+    // OPTIMISTIC UI: Update map and show success immediately
+    if (window.jobFolderMap[jobId]) {
+        window.jobFolderMap[jobId] = window.jobFolderMap[jobId].filter(
+            f => f.folder_id !== folderId.toString()
+        );
+    }
+    showSuccessMessage(`Removed from "${folderName}"`);
+
+    // Re-render to update folder indicators
+    if (typeof displayResults === 'function' && typeof jobsCache !== 'undefined') {
+        displayResults(jobsCache.slice(currentPage * 50, (currentPage + 1) * 50));
+    }
+
+    // Refresh the picker to show updated state
+    if (window._originalShowFolderPicker) {
+        window._originalShowFolderPicker(index);
+    }
+
+    // Make API call in background
+    try {
+        const response = await fetch(`/api/folders/${folderId}/jobs/${jobId}`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to remove job from folder');
+        }
+
+    } catch (error) {
+        console.error('Error removing job from folder:', error);
+
+        // Revert optimistic update on failure
+        if (!window.jobFolderMap[jobId]) {
+            window.jobFolderMap[jobId] = [];
+        }
+        window.jobFolderMap[jobId].push({
+            folder_id: folderId.toString(),
+            folder_name: folderName
+        });
+
+        showError('Failed to remove job from folder. Please try again.');
+
+        // Re-render to show reverted state
         if (typeof displayResults === 'function' && typeof jobsCache !== 'undefined') {
             displayResults(jobsCache.slice(currentPage * 50, (currentPage + 1) * 50));
         }
 
-        // Close modal
-        if (typeof closeModal === 'function') {
-            closeModal();
+        // Refresh picker to show reverted state
+        if (window._originalShowFolderPicker) {
+            window._originalShowFolderPicker(index);
         }
-    } catch (error) {
-        console.error('Error adding job to folder:', error);
-        showError('Failed to add job to folder. Please check your database connection.');
-        closeModal();
     }
 }
 
@@ -205,6 +370,11 @@ async function quickCreateFolderAPI(jobIndex) {
         return;
     }
 
+    // Close modal immediately for optimistic UI
+    if (typeof closeModal === 'function') {
+        closeModal();
+    }
+
     try {
         // Create folder via API
         const response = await fetch('/api/folders', {
@@ -219,20 +389,19 @@ async function quickCreateFolderAPI(jobIndex) {
 
         const folder = await response.json();
 
-        // Reload folders to get the new folder
-        await loadJobFolders();
+        // Force reload folders since we created a new one
+        await loadJobFolders(true);
 
-        // Add the job to this new folder
+        // Add the job to this new folder (this handles its own optimistic UI)
         await addJobToFolderAPI(jobIndex, folder.id.toString());
 
     } catch (error) {
         console.error('Error creating folder:', error);
-        showError('Failed to create folder. Please check your database connection.');
-        closeModal();
+        showError('Failed to create folder. Please try again.');
     }
 }
 
-// Toggle job in folder with API
+// Toggle job in folder with API (add or remove)
 async function toggleJobInFolderAPI(index, folderId) {
     const job = jobsCache[index];
     if (!job) return;
@@ -240,21 +409,12 @@ async function toggleJobInFolderAPI(index, folderId) {
     const company = job.company_object || {};
     const companyName = company.name || job.company || 'Unknown Company';
 
-    // For now, we only support adding (not removing) via API
-    // Removal would require DELETE endpoint
     if (window.isJobInFolder && window.isJobInFolder(job, companyName, folderId)) {
-        // Job is already in folder - would need to remove
-        alert('Removing jobs from folders is not yet supported via API. Please use the folders page.');
-        return;
-    }
-
-    // Add to folder
-    await addJobToFolderAPI(index, folderId);
-
-    // Refresh the picker to show updated state
-    if (window._originalShowFolderPicker) {
-        await loadJobFolders();
-        window._originalShowFolderPicker(index);
+        // Job is already in folder - remove it
+        await removeJobFromFolderAPI(index, folderId);
+    } else {
+        // Add to folder - this will close the modal after adding
+        await addJobToFolderAPI(index, folderId);
     }
 }
 
@@ -283,64 +443,44 @@ function showSuccessMessage(message) {
 
 // Wrapper for showFolderPicker that ensures folders are loaded
 async function showFolderPickerWithAPI(index) {
-    console.log('[Folder Integration] Opening folder picker for job index:', index);
-    console.log('[Folder Integration] Current jobFolders before reload:', jobFolders);
+    // Don't open picker if we're in the middle of adding a job
+    if (isAddingToFolder) {
+        return;
+    }
 
-    // Reload folders from API first to ensure fresh data
-    console.log('[Folder Integration] Loading folders from API...');
-    await loadJobFolders();
+    // Load folders if not yet loaded
+    if (!foldersLoaded) {
+        await loadJobFolders();
+    }
 
-    console.log('[Folder Integration] After reload - jobFolders:', jobFolders);
-    console.log('[Folder Integration] Folders loaded:', jobFolders?.length || 0);
-    console.log('[Folder Integration] Folder names:', jobFolders?.map(f => f.name) || []);
-    console.log('[Folder Integration] First folder details:', jobFolders?.[0]);
+    // Also load mappings if not yet loaded (for showing which folders job is in)
+    if (!mappingsLoaded) {
+        await loadJobFolderMappings();
+    }
 
-    // Verify the global jobFolders variable is set
-    console.log('[Folder Integration] window.jobFolders:', window.jobFolders);
-    console.log('[Folder Integration] typeof jobFolders:', typeof jobFolders);
-
-    // Then show the picker (uses the original app.js function)
+    // Show the picker using the original app.js function
     if (window._originalShowFolderPicker && typeof window._originalShowFolderPicker === 'function') {
-        console.log('[Folder Integration] Calling original showFolderPicker');
-        console.log('[Folder Integration] jobFolders just before calling:', jobFolders);
-        console.log('[Folder Integration] jobFolders.length:', jobFolders.length);
-        console.log('[Folder Integration] Array.isArray(jobFolders):', Array.isArray(jobFolders));
-
         window._originalShowFolderPicker(index);
-
-        console.log('[Folder Integration] Original showFolderPicker called');
-        console.log('[Folder Integration] Modal should now be visible');
     } else {
-        console.error('[Folder Integration] ERROR: Original showFolderPicker not available!');
-        console.log('[Folder Integration] Available:', window._originalShowFolderPicker);
         alert('Error: Folder picker not available. Please refresh the page.');
     }
 }
 
 // Safe wrapper for renderFolders - prevents crash when elements don't exist
 function safeRenderFolders() {
-    console.log('[Folder Integration] safeRenderFolders called');
     const foldersListElement = document.getElementById('foldersList');
-    console.log('[Folder Integration] foldersList element exists:', !!foldersListElement);
-
-    // Only call if element exists
     if (foldersListElement && typeof window._originalRenderFolders === 'function') {
-        console.log('[Folder Integration] Calling original renderFolders');
         try {
             window._originalRenderFolders();
         } catch (error) {
             console.error('[Folder Integration] Error in renderFolders:', error);
         }
-    } else {
-        console.log('[Folder Integration] Skipping renderFolders - element not found');
     }
 }
 
 // Safe wrapper for updateTotalJobsCount - prevents crash when elements don't exist
 function safeUpdateTotalJobsCount() {
     const totalJobsCountElement = document.getElementById('totalJobsCount');
-
-    // Only call if element exists
     if (totalJobsCountElement && typeof window._originalUpdateTotalJobsCount === 'function') {
         try {
             window._originalUpdateTotalJobsCount();
@@ -354,21 +494,12 @@ function safeUpdateTotalJobsCount() {
 function patchRenderFolders() {
     if (typeof window.renderFolders !== 'function') return;
 
-    // Save the REAL original before any modifications
     const trueOriginal = window.renderFolders;
-
-    // Create a patched version that adds safety check
     window.renderFolders = function() {
         const element = document.getElementById('foldersList');
-        if (!element) {
-            console.log('[Folder Integration] renderFolders called but foldersList element not found - skipping');
-            return;
-        }
-        // Call the true original function
+        if (!element) return;
         return trueOriginal.apply(this, arguments);
     };
-
-    console.log('[Folder Integration] renderFolders patched with safety check');
 }
 
 // Patch updateTotalJobsCount to add element existence check
@@ -376,49 +507,28 @@ function patchUpdateTotalJobsCount() {
     if (typeof window.updateTotalJobsCount !== 'function') return;
 
     const trueOriginal = window.updateTotalJobsCount;
-
     window.updateTotalJobsCount = function() {
         const element = document.getElementById('totalJobsCount');
-        if (!element) {
-            console.log('[Folder Integration] updateTotalJobsCount called but totalJobsCount element not found - skipping');
-            return;
-        }
+        if (!element) return;
         return trueOriginal.apply(this, arguments);
     };
-
-    console.log('[Folder Integration] updateTotalJobsCount patched with safety check');
 }
 
 // Override existing functions to use API
-// Wait for DOM to be ready to ensure app.js functions are defined
 function initializeFolderIntegration() {
-    console.log('[Folder Integration] Initializing...');
-
-    // FIRST: Patch renderFolders and updateTotalJobsCount with safety checks
-    // This must happen BEFORE we save them as "_original" versions
+    // Patch renderFolders and updateTotalJobsCount with safety checks
     patchRenderFolders();
     patchUpdateTotalJobsCount();
 
-    // Save original functions as fallbacks (these are now the patched versions)
+    // Save original functions as fallbacks
     window._originalCreateNewFolder = window.createNewFolder;
     window._originalAddJobToFolder = window.addJobToFolder;
     window._originalLoadJobFolders = window.loadJobFolders;
     window._originalShowFolderPicker = window.showFolderPicker;
     window._originalQuickCreateFolder = window.quickCreateFolder;
     window._originalToggleJobInFolder = window.toggleJobInFolder;
-    window._originalRenderFolders = window.renderFolders; // Already patched
-    window._originalUpdateTotalJobsCount = window.updateTotalJobsCount; // Already patched
-
-    console.log('[Folder Integration] Original functions saved:', {
-        createNewFolder: !!window._originalCreateNewFolder,
-        addJobToFolder: !!window._originalAddJobToFolder,
-        loadJobFolders: !!window._originalLoadJobFolders,
-        showFolderPicker: !!window._originalShowFolderPicker,
-        quickCreateFolder: !!window._originalQuickCreateFolder,
-        toggleJobInFolder: !!window._originalToggleJobInFolder,
-        renderFolders: !!window._originalRenderFolders,
-        updateTotalJobsCount: !!window._originalUpdateTotalJobsCount
-    });
+    window._originalRenderFolders = window.renderFolders;
+    window._originalUpdateTotalJobsCount = window.updateTotalJobsCount;
 
     // Replace with API versions
     window.createNewFolder = createNewFolderAPI;
@@ -430,28 +540,43 @@ function initializeFolderIntegration() {
     window.renderFolders = safeRenderFolders; // Override with safe version
     window.updateTotalJobsCount = safeUpdateTotalJobsCount; // Override with safe version
 
-    // Load folders from API immediately
-    loadJobFolders();
+    // Override getJobFolders to use the API mapping
+    window._originalGetJobFolders = window.getJobFolders;
+    window.getJobFolders = function(job, companyName) {
+        const jobId = job.id;
+        if (!jobId || !window.jobFolderMap || !window.jobFolderMap[jobId]) {
+            return [];
+        }
+        // Return folder objects that match the expected format
+        return window.jobFolderMap[jobId].map(m => ({
+            id: m.folder_id,
+            name: m.folder_name
+        }));
+    };
 
-    console.log('[Folder Integration] API integration active');
+    // Override isJobInFolder to use the API mapping
+    window._originalIsJobInFolder = window.isJobInFolder;
+    window.isJobInFolder = function(job, companyName, folderId) {
+        const jobId = job.id;
+        if (!jobId || !window.jobFolderMap || !window.jobFolderMap[jobId]) {
+            return false;
+        }
+        return window.jobFolderMap[jobId].some(m => m.folder_id === folderId.toString());
+    };
+
+    // Don't load folders/mappings here - they'll be loaded on first picker open
+    // This avoids unnecessary API calls on page load
 }
 
 // Initialize immediately - don't wait for DOM
-// CRITICAL: We need to override functions BEFORE app.js DOMContentLoaded fires
 if (typeof window !== 'undefined') {
-    // Poll for functions to be defined and override them immediately
     const checkAndInit = () => {
-        // Check if critical functions are defined
         if (typeof window.loadJobFolders === 'function') {
-            console.log('[Folder Integration] App.js functions detected, initializing...');
             initializeFolderIntegration();
         } else {
-            // App.js hasn't defined functions yet, check again VERY soon (1ms)
             setTimeout(checkAndInit, 1);
         }
     };
-
-    // Start checking immediately when this script loads
     checkAndInit();
 }
 
@@ -474,4 +599,4 @@ if (!document.getElementById('folder-integration-styles')) {
     document.head.appendChild(style);
 }
 
-console.log('Folder integration loaded - using PostgreSQL API');
+// Folder integration loaded

@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Folder - JobFeeder</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .folder-detail-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .folder-header {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .folder-header h1 {
+            margin-bottom: 10px;
+        }
+
+        .folder-meta {
+            display: flex;
+            gap: 20px;
+            color: #6c757d;
+            font-size: 14px;
+        }
+
+        .folder-status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .folder-status.jobs_added { background: #e3f2fd; color: #1565c0; }
+        .folder-status.company_enriched { background: #e8f5e9; color: #2e7d32; }
+        .folder-status.prospects_collected { background: #fff3e0; color: #ef6c00; }
+        .folder-status.prospects_selected { background: #f3e5f5; color: #7b1fa2; }
+        .folder-status.ready_for_outreach { background: #e0f7fa; color: #00838f; }
+
+        .folder-actions {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 0;
+            border-bottom: 2px solid #e2e8f0;
+            margin-bottom: 20px;
+        }
+
+        .tab {
+            padding: 12px 24px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-size: 16px;
+            font-weight: 500;
+            color: #64748b;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            transition: all 0.2s;
+        }
+
+        .tab:hover {
+            color: #2563eb;
+        }
+
+        .tab.active {
+            color: #2563eb;
+            border-bottom-color: #2563eb;
+        }
+
+        .tab-count {
+            background: #e2e8f0;
+            color: #64748b;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 12px;
+            margin-left: 8px;
+        }
+
+        .tab.active .tab-count {
+            background: #dbeafe;
+            color: #2563eb;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Job list */
+        .job-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .job-item {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .job-item:hover {
+            border-color: #cbd5e1;
+        }
+
+        .job-info h3 {
+            font-size: 16px;
+            margin-bottom: 4px;
+        }
+
+        .job-info .company {
+            color: #64748b;
+            font-size: 14px;
+        }
+
+        .job-info .meta {
+            color: #94a3b8;
+            font-size: 13px;
+            margin-top: 4px;
+        }
+
+        .job-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        /* Company list */
+        .company-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .company-item {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 16px;
+        }
+
+        .company-item:hover {
+            border-color: #cbd5e1;
+        }
+
+        .company-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .company-info h3 {
+            font-size: 16px;
+            margin-bottom: 4px;
+        }
+
+        .company-info .domain {
+            color: #2563eb;
+            font-size: 14px;
+        }
+
+        .company-info .meta {
+            color: #94a3b8;
+            font-size: 13px;
+            margin-top: 4px;
+        }
+
+        .company-status {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .company-status.completed { background: #dcfce7; color: #166534; }
+        .company-status.pending { background: #fef3c7; color: #92400e; }
+        .company-status.processing { background: #dbeafe; color: #1e40af; }
+        .company-status.failed { background: #fee2e2; color: #991b1b; }
+
+        .company-summary {
+            margin-top: 12px;
+            color: #475569;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .company-tags {
+            margin-top: 10px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .company-tag {
+            background: #f1f5f9;
+            color: #475569;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+        }
+
+        /* Prospects section */
+        .prospects-section {
+            margin-top: 30px;
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .prospects-section h3 {
+            margin-bottom: 15px;
+        }
+
+        .prospects-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .prospects-table th,
+        .prospects-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .prospects-table th {
+            background: #f8fafc;
+            font-weight: 600;
+            color: #374151;
+        }
+
+        .prospects-table tr:hover {
+            background: #f8fafc;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #64748b;
+        }
+
+        .empty-state h3 {
+            margin-bottom: 10px;
+            color: #374151;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .btn-danger {
+            background: #dc2626;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #b91c1c;
+        }
+    </style>
+</head>
+<body>
+    <div class="folder-detail-container">
+        <div class="page-header">
+            <a href="/folders.html" class="btn btn-secondary">← Back to Folders</a>
+            <a href="/" class="btn btn-secondary">Search Jobs</a>
+        </div>
+
+        <div id="folderHeader" class="folder-header">
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Loading folder...</p>
+            </div>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" data-tab="jobs">
+                Jobs <span class="tab-count" id="jobsCount">0</span>
+            </button>
+            <button class="tab" data-tab="companies">
+                Companies <span class="tab-count" id="companiesCount">0</span>
+            </button>
+            <button class="tab" data-tab="prospects">
+                Prospects <span class="tab-count" id="prospectsCount">0</span>
+            </button>
+        </div>
+
+        <div id="jobsTab" class="tab-content active">
+            <div class="loading">
+                <div class="spinner"></div>
+            </div>
+        </div>
+
+        <div id="companiesTab" class="tab-content">
+            <div class="loading">
+                <div class="spinner"></div>
+            </div>
+        </div>
+
+        <div id="prospectsTab" class="tab-content">
+            <div class="loading">
+                <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentFolder = null;
+        let folderJobs = [];
+        let folderCompanies = [];
+        let folderProspects = [];
+
+        // Get folder ID from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const folderId = urlParams.get('id');
+
+        if (!folderId) {
+            window.location.href = '/folders.html';
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadFolderDetails();
+            setupTabs();
+        });
+
+        function setupTabs() {
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    const tabName = tab.dataset.tab;
+
+                    // Update active tab
+                    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+
+                    // Update active content
+                    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                    document.getElementById(tabName + 'Tab').classList.add('active');
+                });
+            });
+        }
+
+        async function loadFolderDetails() {
+            try {
+                const response = await fetch(`/api/folders/${folderId}`);
+                if (!response.ok) throw new Error('Failed to load folder');
+
+                const data = await response.json();
+                currentFolder = data.folder;
+                folderJobs = data.jobs || [];
+                folderProspects = data.prospects || [];
+
+                // Get unique companies from jobs
+                const companyDomains = [...new Set(folderJobs.map(j => j.company_domain))];
+
+                // Load company details
+                await loadCompanies(companyDomains);
+
+                renderFolderHeader();
+                renderJobs();
+                renderCompanies();
+                renderProspects();
+
+                // Update counts
+                document.getElementById('jobsCount').textContent = folderJobs.length;
+                document.getElementById('companiesCount').textContent = folderCompanies.length;
+                document.getElementById('prospectsCount').textContent = folderProspects.length;
+
+            } catch (error) {
+                console.error('Error loading folder:', error);
+                document.getElementById('folderHeader').innerHTML = `
+                    <div class="empty-state">
+                        <h3>Error loading folder</h3>
+                        <p>${error.message}</p>
+                        <a href="/folders.html" class="btn btn-primary" style="margin-top: 15px;">Back to Folders</a>
+                    </div>
+                `;
+            }
+        }
+
+        async function loadCompanies(domains) {
+            if (domains.length === 0) {
+                folderCompanies = [];
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/companies');
+                if (!response.ok) throw new Error('Failed to load companies');
+
+                const allCompanies = await response.json();
+                folderCompanies = allCompanies.filter(c => domains.includes(c.domain));
+            } catch (error) {
+                console.error('Error loading companies:', error);
+                folderCompanies = [];
+            }
+        }
+
+        function renderFolderHeader() {
+            const statusLabels = {
+                'jobs_added': 'Jobs Added',
+                'company_enriched': 'Companies Enriched',
+                'prospects_collected': 'Prospects Collected',
+                'prospects_selected': 'Prospects Selected',
+                'ready_for_outreach': 'Ready for Outreach'
+            };
+
+            document.getElementById('folderHeader').innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div>
+                        <h1>${escapeHtml(currentFolder.name)}</h1>
+                        <div class="folder-meta">
+                            <span class="folder-status ${currentFolder.status}">${statusLabels[currentFolder.status] || currentFolder.status}</span>
+                            <span>${folderJobs.length} jobs</span>
+                            <span>${folderCompanies.length} companies</span>
+                            <span>${folderProspects.length} prospects</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-danger btn-sm" onclick="deleteFolder()">Delete Folder</button>
+                </div>
+                <div class="folder-actions">
+                    ${renderActionButtons()}
+                </div>
+            `;
+        }
+
+        function renderActionButtons() {
+            let buttons = '';
+
+            if (currentFolder.status === 'company_enriched' ||
+                (currentFolder.status === 'jobs_added' && folderCompanies.every(c => c.enrichment_status === 'completed'))) {
+                buttons += `<button class="btn btn-success" onclick="collectProspects()">Collect Prospects</button>`;
+            }
+
+            if (currentFolder.status === 'prospects_collected' && folderProspects.length > 0) {
+                buttons += `<button class="btn btn-info" onclick="autoSelectProspects()">Auto-Select Top Prospects</button>`;
+            }
+
+            if (currentFolder.status === 'prospects_selected') {
+                const selectedCount = folderProspects.filter(p => p.selected).length;
+                buttons += `<button class="btn btn-warning" onclick="enrichContacts()">Get Email Addresses (${selectedCount})</button>`;
+            }
+
+            if (currentFolder.status === 'ready_for_outreach') {
+                const enrichedCount = folderProspects.filter(p => p.email).length;
+                buttons += `<button class="btn btn-primary" onclick="exportProspects()">Export Prospects (${enrichedCount})</button>`;
+            }
+
+            return buttons;
+        }
+
+        function renderJobs() {
+            const container = document.getElementById('jobsTab');
+
+            if (folderJobs.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <h3>No jobs in this folder</h3>
+                        <p>Add jobs from the <a href="/">search page</a></p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="job-list">
+                    ${folderJobs.map(job => `
+                        <div class="job-item">
+                            <div class="job-info">
+                                <h3>${escapeHtml(job.job_title)}</h3>
+                                <div class="company">${escapeHtml(job.company_name)}</div>
+                                <div class="meta">
+                                    ${job.location || 'Location not specified'}
+                                    ${job.salary_string ? ' • ' + escapeHtml(job.salary_string) : ''}
+                                </div>
+                            </div>
+                            <div class="job-actions">
+                                ${job.job_url ? `<a href="${escapeHtml(job.job_url)}" target="_blank" class="btn btn-sm btn-secondary">View Job</a>` : ''}
+                                <button class="btn btn-sm btn-danger" onclick="removeJob(${job.id})">Remove</button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function renderCompanies() {
+            const container = document.getElementById('companiesTab');
+
+            if (folderCompanies.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <h3>No companies yet</h3>
+                        <p>Companies are added when you add jobs to this folder</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="company-list">
+                    ${folderCompanies.map(company => {
+                        const enriched = company.enriched_data || {};
+                        const theirstack = company.theirstack_data || {};
+                        const statusClass = company.enrichment_status || 'pending';
+                        const statusLabel = {
+                            'completed': 'Enriched',
+                            'pending': 'Pending',
+                            'processing': 'Processing',
+                            'failed': 'Failed'
+                        }[statusClass] || statusClass;
+
+                        let tags = [];
+                        if (theirstack.industry) tags.push(theirstack.industry);
+                        if (theirstack.employee_count) tags.push(formatEmployeeCount(theirstack.employee_count) + ' employees');
+                        if (theirstack.funding_stage) tags.push(theirstack.funding_stage);
+
+                        return `
+                            <div class="company-item">
+                                <div class="company-header">
+                                    <div class="company-info">
+                                        <h3>${escapeHtml(company.name)}</h3>
+                                        <a href="https://${escapeHtml(company.domain)}" target="_blank" class="domain">${escapeHtml(company.domain)}</a>
+                                    </div>
+                                    <span class="company-status ${statusClass}">${statusLabel}</span>
+                                </div>
+                                ${enriched.company_summary ? `<p class="company-summary">${escapeHtml(enriched.company_summary)}</p>` : ''}
+                                ${tags.length > 0 ? `
+                                    <div class="company-tags">
+                                        ${tags.map(tag => `<span class="company-tag">${escapeHtml(tag)}</span>`).join('')}
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+        }
+
+        function renderProspects() {
+            const container = document.getElementById('prospectsTab');
+
+            if (folderProspects.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <h3>No prospects yet</h3>
+                        <p>Click "Collect Prospects" to find contacts at these companies</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Group prospects by company
+            const byCompany = {};
+            folderProspects.forEach(p => {
+                const key = p.company_id || 'unknown';
+                if (!byCompany[key]) byCompany[key] = [];
+                byCompany[key].push(p);
+            });
+
+            let html = '<div class="prospects-section">';
+
+            Object.entries(byCompany).forEach(([companyId, prospects]) => {
+                const company = folderCompanies.find(c => c.id == companyId);
+                const companyName = company ? company.name : 'Unknown Company';
+
+                html += `
+                    <h4 style="margin: 20px 0 10px; color: #374151;">${escapeHtml(companyName)}</h4>
+                    <table class="prospects-table">
+                        <thead>
+                            <tr>
+                                <th>Select</th>
+                                <th>Name</th>
+                                <th>Title</th>
+                                <th>Email</th>
+                                <th>LinkedIn</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${prospects.map(p => `
+                                <tr>
+                                    <td><input type="checkbox" ${p.selected ? 'checked' : ''} onchange="toggleProspectSelection(${p.id}, this.checked)"></td>
+                                    <td>${escapeHtml(p.name)}</td>
+                                    <td>${escapeHtml(p.title || '-')}</td>
+                                    <td>${p.email ? escapeHtml(p.email) : '<span style="color: #94a3b8;">Not enriched</span>'}</td>
+                                    <td>${p.linkedin_url ? `<a href="${escapeHtml(p.linkedin_url)}" target="_blank">Profile</a>` : '-'}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            });
+
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        async function removeJob(jobId) {
+            if (!confirm('Remove this job from the folder?')) return;
+
+            try {
+                const response = await fetch(`/api/folders/${folderId}/jobs/${jobId}`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) throw new Error('Failed to remove job');
+
+                // Reload
+                loadFolderDetails();
+            } catch (error) {
+                console.error('Error removing job:', error);
+                alert('Failed to remove job: ' + error.message);
+            }
+        }
+
+        async function deleteFolder() {
+            if (!confirm(`Delete folder "${currentFolder.name}"? This cannot be undone.`)) return;
+
+            try {
+                const response = await fetch(`/api/folders/${folderId}`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) throw new Error('Failed to delete folder');
+
+                window.location.href = '/folders.html';
+            } catch (error) {
+                console.error('Error deleting folder:', error);
+                alert('Failed to delete folder: ' + error.message);
+            }
+        }
+
+        async function collectProspects() {
+            try {
+                const response = await fetch(`/api/folders/${folderId}/collect-prospects`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) throw new Error('Failed to start prospect collection');
+
+                alert('Prospect collection started. This may take a few minutes.');
+                loadFolderDetails();
+            } catch (error) {
+                console.error('Error collecting prospects:', error);
+                alert('Failed to collect prospects: ' + error.message);
+            }
+        }
+
+        async function autoSelectProspects() {
+            try {
+                const response = await fetch(`/api/folders/${folderId}/auto-select`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) throw new Error('Failed to auto-select prospects');
+
+                loadFolderDetails();
+            } catch (error) {
+                console.error('Error auto-selecting prospects:', error);
+                alert('Failed to auto-select prospects: ' + error.message);
+            }
+        }
+
+        async function enrichContacts() {
+            try {
+                const response = await fetch(`/api/folders/${folderId}/enrich-contacts`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) throw new Error('Failed to start contact enrichment');
+
+                alert('Contact enrichment started. This may take a few minutes.');
+                loadFolderDetails();
+            } catch (error) {
+                console.error('Error enriching contacts:', error);
+                alert('Failed to enrich contacts: ' + error.message);
+            }
+        }
+
+        async function toggleProspectSelection(prospectId, selected) {
+            try {
+                await fetch(`/api/prospects/${prospectId}/select`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ selected })
+                });
+            } catch (error) {
+                console.error('Error updating prospect selection:', error);
+            }
+        }
+
+        function exportProspects() {
+            const enrichedProspects = folderProspects.filter(p => p.email);
+            if (enrichedProspects.length === 0) {
+                alert('No prospects with email addresses to export');
+                return;
+            }
+
+            const csv = [
+                ['Name', 'Title', 'Company', 'Email', 'LinkedIn'].join(','),
+                ...enrichedProspects.map(p => {
+                    const company = folderCompanies.find(c => c.id == p.company_id);
+                    return [
+                        `"${p.name || ''}"`,
+                        `"${p.title || ''}"`,
+                        `"${company ? company.name : ''}"`,
+                        `"${p.email || ''}"`,
+                        `"${p.linkedin_url || ''}"`
+                    ].join(',');
+                })
+            ].join('\n');
+
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${currentFolder.name}-prospects.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function formatEmployeeCount(count) {
+            if (!count) return '';
+            if (count >= 1000000) return (count / 1000000).toFixed(1) + 'M';
+            if (count >= 1000) return (count / 1000).toFixed(0) + 'K';
+            return count.toString();
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

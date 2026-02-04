@@ -28,6 +28,12 @@ export class WorkflowManager {
     // ===== STAGE 1: Add Job and Trigger Enrichment =====
 
     async addJobToFolder(folderId, jobData) {
+        console.log(`[Workflow] Adding job to folder ${folderId}:`, {
+            job_title: jobData.job_title,
+            company: jobData.company,
+            domain: jobData.domain
+        });
+
         // Add job to database
         const job = await this.db.addJobToFolder(folderId, {
             theirstack_job_id: jobData.id || null,
@@ -44,10 +50,13 @@ export class WorkflowManager {
         });
 
         // Check if company exists
+        console.log(`[Workflow] Checking if company exists for domain: "${jobData.domain}"`);
         let company = await this.db.getCompany(jobData.domain);
+        console.log(`[Workflow] Company lookup result:`, company ? `Found (status: ${company.enrichment_status})` : 'Not found');
 
         if (!company) {
             // Create company entry
+            console.log(`[Workflow] Creating new company: ${jobData.company} (${jobData.domain})`);
             company = await this.db.createCompany(
                 jobData.domain,
                 jobData.company,

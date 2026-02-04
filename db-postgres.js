@@ -318,6 +318,33 @@ export class PostgresDatabase {
         return result.rows[0] || null;
     }
 
+    async removeJobFromFolder(folderId, jobId) {
+        // jobId can be either the database id or theirstack_job_id
+        const result = await pool.query(
+            'DELETE FROM jobs WHERE folder_id = $1 AND (id = $2 OR theirstack_job_id = $2) RETURNING *',
+            [folderId, jobId]
+        );
+
+        if (result.rows.length > 0) {
+            // Update folder timestamp
+            await pool.query('UPDATE folders SET updated_at = NOW() WHERE id = $1', [folderId]);
+            console.log(`✅ Job removed from folder ${folderId}`);
+        }
+
+        return result.rows[0] || null;
+    }
+
+    async getJobFolderMappings() {
+        // Returns mapping of theirstack_job_id to folder info for all jobs
+        const result = await pool.query(`
+            SELECT j.theirstack_job_id, j.folder_id, f.name as folder_name
+            FROM jobs j
+            JOIN folders f ON j.folder_id = f.id
+            WHERE j.theirstack_job_id IS NOT NULL
+        `);
+        return result.rows;
+    }
+
     // ===== COMPANY METHODS =====
 
     async createCompany(domain, name, theirstackData = null, employeeCount = null) {

@@ -85,7 +85,7 @@ function renderFolders() {
     }
 
     elements.foldersGrid.innerHTML = folders.map(folder => `
-        <div class="folder-card" onclick="openFolder(${folder.id})">
+        <div class="folder-card" onclick="goToFolder(${folder.id})">
             <div class="folder-header">
                 <div class="folder-title">${escapeHtml(folder.name)}</div>
                 <div class="folder-status ${folder.status}">${formatStatus(folder.status)}</div>
@@ -103,11 +103,16 @@ function renderFolders() {
     `).join('');
 }
 
+// Navigate to folder detail page
+function goToFolder(folderId) {
+    window.location.href = `/folder.html?id=${folderId}`;
+}
+
 function getActionButtons(folder) {
     const buttons = [];
 
     // Always show "View Details"
-    buttons.push(`<button class="btn btn-sm btn-primary" onclick="openFolder(${folder.id})">View Details</button>`);
+    buttons.push(`<button class="btn btn-sm btn-primary" onclick="goToFolder(${folder.id})">View Details</button>`);
 
     // Show "Collect Prospects" if company enrichment is done
     if (folder.status === 'company_enriched') {
@@ -502,7 +507,7 @@ async function handleNotificationClick(notificationId, link) {
             // Handle navigation (e.g., /folders/123)
             const folderMatch = link.match(/\/folders\/(\d+)/);
             if (folderMatch) {
-                openFolder(parseInt(folderMatch[1]));
+                goToFolder(parseInt(folderMatch[1]));
             }
         }
     } catch (error) {

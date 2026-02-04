@@ -1012,9 +1012,45 @@ header h1 {
     position: relative;
 }
 
+.job-card.in-folder {
+    border-left: 3px solid var(--success-color);
+}
+
 .job-card-header {
     position: relative;
     padding-right: 40px;
+}
+
+/* Folder tags on job cards */
+.job-folder-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    padding: 0 1rem 0.5rem;
+    margin-top: -0.25rem;
+}
+
+.folder-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.5rem;
+    background: #dcfce7;
+    color: #166534;
+    font-size: 0.7rem;
+    font-weight: 500;
+    border-radius: 9999px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.folder-tag:hover {
+    background: #bbf7d0;
+}
+
+.folder-tag::before {
+    content: '📁';
+    font-size: 0.65rem;
+    margin-right: 0.25rem;
 }
 
 /* Job Folders Sidebar */
