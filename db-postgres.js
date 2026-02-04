@@ -53,6 +53,7 @@ async function createTables() {
             CREATE TABLE IF NOT EXISTS jobs (
                 id SERIAL PRIMARY KEY,
                 folder_id INTEGER REFERENCES folders(id) ON DELETE CASCADE,
+                company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL,
                 theirstack_job_id TEXT,
                 job_title TEXT NOT NULL,
                 company_name TEXT NOT NULL,
@@ -67,6 +68,19 @@ async function createTables() {
                 created_at TIMESTAMP DEFAULT NOW(),
                 UNIQUE(theirstack_job_id)
             )
+        `);
+
+        // Add company_id column if it doesn't exist (for existing databases)
+        await client.query(`
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'jobs' AND column_name = 'company_id'
+                ) THEN
+                    ALTER TABLE jobs ADD COLUMN company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL;
+                END IF;
+            END $$;
         `);
 
         // Companies table (enriched company data)
@@ -265,21 +279,33 @@ export class PostgresDatabase {
     // ===== JOB METHODS =====
 
     async addJobToFolder(folderId, jobData) {
+        // First, create or get the company
+        let companyId = null;
+        if (jobData.company_domain) {
+            const company = await this.getOrCreateCompany(
+                jobData.company_domain,
+                jobData.company_name,
+                jobData.company_data || null
+            );
+            companyId = company.id;
+        }
+
         // Handle ON CONFLICT only if theirstack_job_id is provided
         const hasJobId = jobData.theirstack_job_id && jobData.theirstack_job_id !== null;
         const conflictClause = hasJobId
-            ? 'ON CONFLICT (theirstack_job_id) DO UPDATE SET folder_id = EXCLUDED.folder_id'
+            ? 'ON CONFLICT (theirstack_job_id) DO UPDATE SET folder_id = EXCLUDED.folder_id, company_id = EXCLUDED.company_id'
             : '';
 
         const result = await pool.query(`
             INSERT INTO jobs (
-                folder_id, theirstack_job_id, job_title, company_name, company_domain,
+                folder_id, company_id, theirstack_job_id, job_title, company_name, company_domain,
                 location, country, salary_string, description, job_url, posted_date, raw_data
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             ${conflictClause}
             RETURNING *
         `, [
             folderId,
+            companyId,
             jobData.theirstack_job_id || null,
             jobData.job_title,
             jobData.company_name,
@@ -305,11 +331,42 @@ export class PostgresDatabase {
         return job;
     }
 
+    // Get or create a company by domain
+    async getOrCreateCompany(domain, name, theirstackData = null) {
+        // Check if company exists
+        let result = await pool.query('SELECT * FROM companies WHERE domain = $1', [domain]);
+
+        if (result.rows.length > 0) {
+            return result.rows[0];
+        }
+
+        // Create new company
+        const employeeCount = theirstackData?.employee_count || null;
+        result = await pool.query(`
+            INSERT INTO companies (domain, name, theirstack_data, employee_count)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (domain) DO UPDATE SET
+                name = COALESCE(EXCLUDED.name, companies.name),
+                theirstack_data = COALESCE(EXCLUDED.theirstack_data, companies.theirstack_data),
+                employee_count = COALESCE(EXCLUDED.employee_count, companies.employee_count),
+                updated_at = NOW()
+            RETURNING *
+        `, [domain, name, theirstackData ? JSON.stringify(theirstackData) : null, employeeCount]);
+
+        console.log(`✅ Company created/updated: ${name} (${domain})`);
+        return result.rows[0];
+    }
+
     async getJobsByFolder(folderId) {
-        const result = await pool.query(
-            'SELECT * FROM jobs WHERE folder_id = $1 ORDER BY created_at DESC',
-            [folderId]
-        );
+        const result = await pool.query(`
+            SELECT j.*, c.id as linked_company_id, c.name as linked_company_name,
+                   c.domain as linked_company_domain, c.enrichment_status,
+                   c.theirstack_data as company_theirstack_data, c.enriched_data as company_enriched_data
+            FROM jobs j
+            LEFT JOIN companies c ON j.company_id = c.id
+            WHERE j.folder_id = $1
+            ORDER BY j.created_at DESC
+        `, [folderId]);
         return result.rows;
     }
 
@@ -319,11 +376,26 @@ export class PostgresDatabase {
     }
 
     async removeJobFromFolder(folderId, jobId) {
-        // jobId can be either the database id or theirstack_job_id
-        const result = await pool.query(
-            'DELETE FROM jobs WHERE folder_id = $1 AND (id = $2 OR theirstack_job_id = $2) RETURNING *',
-            [folderId, jobId]
-        );
+        // jobId can be either the database id (integer) or theirstack_job_id (text)
+        // Try to parse as integer for id comparison, always use string for theirstack_job_id
+        const jobIdStr = jobId.toString();
+        const jobIdInt = parseInt(jobIdStr, 10);
+        const isNumeric = !isNaN(jobIdInt);
+
+        let result;
+        if (isNumeric) {
+            // Can match by either integer id or text theirstack_job_id
+            result = await pool.query(
+                'DELETE FROM jobs WHERE folder_id = $1 AND (id = $2 OR theirstack_job_id = $3) RETURNING *',
+                [folderId, jobIdInt, jobIdStr]
+            );
+        } else {
+            // Only match by text theirstack_job_id
+            result = await pool.query(
+                'DELETE FROM jobs WHERE folder_id = $1 AND theirstack_job_id = $2 RETURNING *',
+                [folderId, jobIdStr]
+            );
+        }
 
         if (result.rows.length > 0) {
             // Update folder timestamp
@@ -346,6 +418,18 @@ export class PostgresDatabase {
     }
 
     // ===== COMPANY METHODS =====
+
+    // Get unique companies associated with jobs in a folder
+    async getCompaniesByFolder(folderId) {
+        const result = await pool.query(`
+            SELECT DISTINCT c.*
+            FROM companies c
+            INNER JOIN jobs j ON j.company_id = c.id
+            WHERE j.folder_id = $1
+            ORDER BY c.name
+        `, [folderId]);
+        return result.rows;
+    }
 
     async createCompany(domain, name, theirstackData = null, employeeCount = null) {
         const result = await pool.query(`

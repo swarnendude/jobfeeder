@@ -246,12 +246,14 @@ app.get('/api/folders/:id', async (req, res) => {
         }
 
         const jobs = await db.getJobsByFolder(id);
+        const companies = await db.getCompaniesByFolder(id);
         const prospects = await db.getProspectsByFolder(id);
         const tasks = await db.getTasksByFolder(id);
 
         res.json({
             folder,
             jobs,
+            companies,
             prospects,
             tasks
         });
