@@ -376,11 +376,26 @@ export class PostgresDatabase {
     }
 
     async removeJobFromFolder(folderId, jobId) {
-        // jobId can be either the database id or theirstack_job_id
-        const result = await pool.query(
-            'DELETE FROM jobs WHERE folder_id = $1 AND (id = $2 OR theirstack_job_id = $2) RETURNING *',
-            [folderId, jobId]
-        );
+        // jobId can be either the database id (integer) or theirstack_job_id (text)
+        // Try to parse as integer for id comparison, always use string for theirstack_job_id
+        const jobIdStr = jobId.toString();
+        const jobIdInt = parseInt(jobIdStr, 10);
+        const isNumeric = !isNaN(jobIdInt);
+
+        let result;
+        if (isNumeric) {
+            // Can match by either integer id or text theirstack_job_id
+            result = await pool.query(
+                'DELETE FROM jobs WHERE folder_id = $1 AND (id = $2 OR theirstack_job_id = $3) RETURNING *',
+                [folderId, jobIdInt, jobIdStr]
+            );
+        } else {
+            // Only match by text theirstack_job_id
+            result = await pool.query(
+                'DELETE FROM jobs WHERE folder_id = $1 AND theirstack_job_id = $2 RETURNING *',
+                [folderId, jobIdStr]
+            );
+        }
 
         if (result.rows.length > 0) {
             // Update folder timestamp
