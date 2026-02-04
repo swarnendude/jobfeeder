@@ -891,16 +891,17 @@ function createNewFolder() {
 
 function getJobFolders(job, companyName) {
     const jobId = job.id || `${job.job_title}-${companyName}`;
-    return jobFolders.filter(folder =>
-        folder.jobs.some(j => j.id === jobId || (j.job_title === job.job_title && j.company === companyName))
-    );
+    return jobFolders.filter(folder => {
+        if (!folder || !folder.jobs || !Array.isArray(folder.jobs)) return false;
+        return folder.jobs.some(j => j && (j.id === jobId || (j.job_title === job.job_title && j.company === companyName)));
+    });
 }
 
 function isJobInFolder(job, companyName, folderId) {
     const folder = jobFolders.find(f => f.id === folderId);
-    if (!folder) return false;
+    if (!folder || !folder.jobs || !Array.isArray(folder.jobs)) return false;
     const jobId = job.id || `${job.job_title}-${companyName}`;
-    return folder.jobs.some(j => j.id === jobId || (j.job_title === job.job_title && j.company === companyName));
+    return folder.jobs.some(j => j && (j.id === jobId || (j.job_title === job.job_title && j.company === companyName)));
 }
 
 function addJobToFolder(index, folderId) {

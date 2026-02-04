@@ -27,7 +27,7 @@ async function loadJobFolders() {
             id: f.id.toString(),
             name: f.name,
             description: f.description,
-            jobs: Array(f.job_count || 0).fill(null), // Create array with length = job_count for compatibility
+            jobs: [], // Empty array - actual jobs not loaded on folder list
             createdAt: f.created_at,
             updatedAt: f.updated_at,
             status: f.status,
