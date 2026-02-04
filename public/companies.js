@@ -1,7 +1,13 @@
 // Companies Page JavaScript
 
+const JOB_FOLDERS_KEY = 'jobfeeder_job_folders';
+const COMPANY_FOLDERS_KEY = 'jobfeeder_company_folders';
+
 let allCompanies = [];
 let filteredCompanies = [];
+let jobFolders = []; // From job search page
+let companyFolders = []; // Company-specific folders
+let currentFolderId = 'all';
 
 // DOM Elements
 const elements = {
@@ -13,16 +19,40 @@ const elements = {
     statProcessing: document.getElementById('statProcessing'),
     statFailed: document.getElementById('statFailed'),
     companyModal: document.getElementById('companyModal'),
-    companyModalBody: document.getElementById('companyModalBody')
+    companyModalBody: document.getElementById('companyModalBody'),
+    // Folder elements
+    foldersSidebar: document.getElementById('foldersSidebar'),
+    foldersNav: document.getElementById('foldersNav'),
+    newFolderInput: document.getElementById('newFolderInput'),
+    createFolderBtn: document.getElementById('createFolderBtn'),
+    toggleSidebarBtn: document.getElementById('toggleSidebarBtn'),
+    currentFolderTitle: document.getElementById('currentFolderTitle'),
+    folderActions: document.getElementById('folderActions'),
+    renameFolderBtn: document.getElementById('renameFolderBtn'),
+    exportFolderBtn: document.getElementById('exportFolderBtn'),
+    deleteFolderBtn: document.getElementById('deleteFolderBtn'),
+    allCompaniesCount: document.getElementById('allCompaniesCount')
 };
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
+    loadJobFolders();
+    loadCompanyFolders();
     loadCompanies();
 
     // Event listeners
     elements.searchCompanies.addEventListener('input', filterCompanies);
     elements.filterStatus.addEventListener('change', filterCompanies);
+
+    // Folder event listeners
+    elements.createFolderBtn.addEventListener('click', createNewFolder);
+    elements.newFolderInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') createNewFolder();
+    });
+    elements.toggleSidebarBtn.addEventListener('click', toggleSidebar);
+    elements.renameFolderBtn?.addEventListener('click', renameCurrentFolder);
+    elements.exportFolderBtn?.addEventListener('click', exportCurrentFolder);
+    elements.deleteFolderBtn?.addEventListener('click', deleteCurrentFolder);
 
     // Close modal on click outside
     elements.companyModal.addEventListener('click', (e) => {
@@ -39,6 +69,262 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
+// Load job folders from localStorage (from job search page)
+function loadJobFolders() {
+    try {
+        const stored = localStorage.getItem(JOB_FOLDERS_KEY);
+        jobFolders = stored ? JSON.parse(stored) : [];
+    } catch (e) {
+        console.error('Failed to load job folders:', e);
+        jobFolders = [];
+    }
+}
+
+// Load company folders from localStorage
+function loadCompanyFolders() {
+    try {
+        const stored = localStorage.getItem(COMPANY_FOLDERS_KEY);
+        companyFolders = stored ? JSON.parse(stored) : [];
+    } catch (e) {
+        console.error('Failed to load company folders:', e);
+        companyFolders = [];
+    }
+}
+
+// Save company folders
+function saveCompanyFolders() {
+    try {
+        localStorage.setItem(COMPANY_FOLDERS_KEY, JSON.stringify(companyFolders));
+    } catch (e) {
+        console.error('Failed to save company folders:', e);
+    }
+}
+
+// Create new folder
+function createNewFolder() {
+    const name = elements.newFolderInput.value.trim();
+    if (!name) {
+        alert('Please enter a folder name');
+        return;
+    }
+
+    // Check for duplicate
+    if (companyFolders.some(f => f.name.toLowerCase() === name.toLowerCase())) {
+        alert('A folder with this name already exists');
+        return;
+    }
+
+    const folder = {
+        id: 'cf_' + Date.now().toString(),
+        name: name,
+        companyDomains: [],
+        createdAt: new Date().toISOString()
+    };
+
+    companyFolders.push(folder);
+    saveCompanyFolders();
+    elements.newFolderInput.value = '';
+    renderFoldersNav();
+    selectFolder(folder.id);
+}
+
+// Toggle sidebar
+function toggleSidebar() {
+    elements.foldersSidebar.classList.toggle('collapsed');
+}
+
+// Render folders navigation
+function renderFoldersNav() {
+    let html = `
+        <div class="folder-nav-item ${currentFolderId === 'all' ? 'active' : ''}" data-folder="all" onclick="selectFolder('all')">
+            <span class="folder-icon">📁</span>
+            <span class="folder-name">All Companies</span>
+            <span class="folder-count">${allCompanies.length}</span>
+        </div>
+    `;
+
+    // Add job folders (read-only, from job search)
+    if (jobFolders.length > 0) {
+        html += '<div class="folder-section-label">From Job Search</div>';
+        jobFolders.forEach(folder => {
+            // Get unique companies from this folder's jobs
+            const companiesInFolder = getCompaniesFromJobFolder(folder);
+            html += `
+                <div class="folder-nav-item ${currentFolderId === 'jf_' + folder.id ? 'active' : ''}"
+                     data-folder="jf_${folder.id}" onclick="selectFolder('jf_${folder.id}')">
+                    <span class="folder-icon">💼</span>
+                    <span class="folder-name">${escapeHtml(folder.name)}</span>
+                    <span class="folder-count">${companiesInFolder.length}</span>
+                </div>
+            `;
+        });
+    }
+
+    // Add company folders
+    if (companyFolders.length > 0) {
+        html += '<div class="folder-section-label">Company Folders</div>';
+        companyFolders.forEach(folder => {
+            html += `
+                <div class="folder-nav-item ${currentFolderId === folder.id ? 'active' : ''}"
+                     data-folder="${folder.id}" onclick="selectFolder('${folder.id}')">
+                    <span class="folder-icon">🏢</span>
+                    <span class="folder-name">${escapeHtml(folder.name)}</span>
+                    <span class="folder-count">${folder.companyDomains.length}</span>
+                </div>
+            `;
+        });
+    }
+
+    elements.foldersNav.innerHTML = html;
+}
+
+// Get companies from a job folder
+function getCompaniesFromJobFolder(folder) {
+    const companyDomains = new Set();
+    folder.jobs.forEach(job => {
+        const domain = job.company_object?.domain || job.company_domain;
+        if (domain) {
+            companyDomains.add(domain);
+        }
+    });
+    return Array.from(companyDomains);
+}
+
+// Select a folder
+function selectFolder(folderId) {
+    currentFolderId = folderId;
+    renderFoldersNav();
+
+    // Update header
+    if (folderId === 'all') {
+        elements.currentFolderTitle.textContent = 'All Companies';
+        elements.folderActions.style.display = 'none';
+    } else if (folderId.startsWith('jf_')) {
+        const folder = jobFolders.find(f => 'jf_' + f.id === folderId);
+        elements.currentFolderTitle.textContent = folder ? folder.name : 'Unknown Folder';
+        elements.folderActions.style.display = 'none'; // Job folders are read-only
+    } else {
+        const folder = companyFolders.find(f => f.id === folderId);
+        elements.currentFolderTitle.textContent = folder ? folder.name : 'Unknown Folder';
+        elements.folderActions.style.display = 'flex';
+    }
+
+    filterCompanies();
+}
+
+// Rename current folder
+function renameCurrentFolder() {
+    const folder = companyFolders.find(f => f.id === currentFolderId);
+    if (!folder) return;
+
+    const newName = prompt('Enter new folder name:', folder.name);
+    if (newName && newName.trim()) {
+        folder.name = newName.trim();
+        saveCompanyFolders();
+        renderFoldersNav();
+        elements.currentFolderTitle.textContent = folder.name;
+    }
+}
+
+// Export current folder
+function exportCurrentFolder() {
+    const companies = getCompaniesForCurrentFolder();
+    if (companies.length === 0) {
+        alert('No companies to export');
+        return;
+    }
+
+    const csv = generateCompaniesCSV(companies);
+    const folderName = elements.currentFolderTitle.textContent || 'companies';
+    downloadFile(csv, `${folderName}.csv`, 'text/csv');
+}
+
+// Delete current folder
+function deleteCurrentFolder() {
+    const folder = companyFolders.find(f => f.id === currentFolderId);
+    if (!folder) return;
+
+    if (!confirm(`Delete folder "${folder.name}"? Companies will not be deleted.`)) return;
+
+    companyFolders = companyFolders.filter(f => f.id !== currentFolderId);
+    saveCompanyFolders();
+    selectFolder('all');
+}
+
+// Get companies for current folder
+function getCompaniesForCurrentFolder() {
+    if (currentFolderId === 'all') {
+        return allCompanies;
+    } else if (currentFolderId.startsWith('jf_')) {
+        const folderId = currentFolderId.replace('jf_', '');
+        const folder = jobFolders.find(f => f.id === folderId);
+        if (!folder) return [];
+        const domains = getCompaniesFromJobFolder(folder);
+        return allCompanies.filter(c => domains.includes(c.domain));
+    } else {
+        const folder = companyFolders.find(f => f.id === currentFolderId);
+        if (!folder) return [];
+        return allCompanies.filter(c => folder.companyDomains.includes(c.domain));
+    }
+}
+
+// Add company to folder
+function addCompanyToFolder(domain, folderId) {
+    const folder = companyFolders.find(f => f.id === folderId);
+    if (!folder) return;
+
+    if (!folder.companyDomains.includes(domain)) {
+        folder.companyDomains.push(domain);
+        saveCompanyFolders();
+        renderFoldersNav();
+    }
+}
+
+// Remove company from folder
+function removeCompanyFromFolder(domain, folderId) {
+    const folder = companyFolders.find(f => f.id === folderId);
+    if (!folder) return;
+
+    folder.companyDomains = folder.companyDomains.filter(d => d !== domain);
+    saveCompanyFolders();
+    renderFoldersNav();
+    filterCompanies();
+}
+
+// Generate CSV for companies
+function generateCompaniesCSV(companies) {
+    const headers = ['Name', 'Domain', 'Industry', 'Employees', 'Funding Stage', 'Location', 'Summary'];
+    const rows = companies.map(c => {
+        const theirstack = c.theirstack_data || {};
+        const enriched = c.enriched_data || {};
+        return [
+            c.name || '',
+            c.domain || '',
+            theirstack.industry || '',
+            theirstack.employee_count || '',
+            theirstack.funding_stage || '',
+            theirstack.country || '',
+            (enriched.company_summary || '').substring(0, 200)
+        ];
+    });
+
+    return [headers, ...rows]
+        .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+        .join('\n');
+}
+
+function downloadFile(content, filename, mimeType) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
 async function loadCompanies() {
     try {
         const response = await fetch('/api/companies');
@@ -51,6 +337,9 @@ async function loadCompanies() {
 
         // Update stats
         updateStats(data.stats);
+
+        // Render folders nav
+        renderFoldersNav();
 
         // Initial render
         filterCompanies();
@@ -78,7 +367,11 @@ function filterCompanies() {
     const searchTerm = elements.searchCompanies.value.toLowerCase();
     const statusFilter = elements.filterStatus.value;
 
-    filteredCompanies = allCompanies.filter(company => {
+    // First filter by folder
+    let companiesInFolder = getCompaniesForCurrentFolder();
+
+    // Then apply search and status filters
+    filteredCompanies = companiesInFolder.filter(company => {
         // Search filter
         const matchesSearch = !searchTerm ||
             company.name?.toLowerCase().includes(searchTerm) ||
@@ -91,7 +384,24 @@ function filterCompanies() {
         return matchesSearch && matchesStatus;
     });
 
+    // Update stats for current folder view
+    updateFolderStats(filteredCompanies);
+
     renderCompanies();
+}
+
+function updateFolderStats(companies) {
+    const stats = {
+        total: companies.length,
+        completed: companies.filter(c => c.enrichment_status === 'completed').length,
+        processing: companies.filter(c => c.enrichment_status === 'processing' || c.enrichment_status === 'pending').length,
+        failed: companies.filter(c => c.enrichment_status === 'failed').length
+    };
+
+    elements.statTotal.textContent = stats.total;
+    elements.statCompleted.textContent = stats.completed;
+    elements.statProcessing.textContent = stats.processing;
+    elements.statFailed.textContent = stats.failed;
 }
 
 function renderCompanies() {
@@ -130,6 +440,16 @@ function createCompanyCard(company) {
     const summary = enriched.company_summary || enriched.tagline ||
         (theirstack.industry ? `${theirstack.industry} company` : 'No description available');
 
+    // Check which folders contain this company
+    const foldersContaining = companyFolders.filter(f => f.companyDomains.includes(company.domain));
+    const folderButton = foldersContaining.length > 0
+        ? `<button class="btn-company-folder btn-in-folder" onclick="showCompanyFolderPicker('${escapeHtml(company.domain)}', event)" title="In: ${foldersContaining.map(f => f.name).join(', ')}">
+            📁 ${foldersContaining.length}
+           </button>`
+        : `<button class="btn-company-folder" onclick="showCompanyFolderPicker('${escapeHtml(company.domain)}', event)" title="Add to folder">
+            📁+
+           </button>`;
+
     return `
         <div class="company-card" onclick="showCompanyDetails('${escapeHtml(company.domain)}')">
             <div class="company-card-header">
@@ -140,7 +460,10 @@ function createCompanyCard(company) {
                         ${escapeHtml(company.domain)}
                     </a>
                 </div>
-                <span class="company-status ${statusClass}">${statusLabel}</span>
+                <div class="company-card-actions">
+                    ${folderButton}
+                    <span class="company-status ${statusClass}">${statusLabel}</span>
+                </div>
             </div>
             <p class="company-card-summary">${escapeHtml(summary.substring(0, 150))}${summary.length > 150 ? '...' : ''}</p>
             ${quickInfo.length > 0 ? `
@@ -623,6 +946,101 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// Show folder picker for a company
+function showCompanyFolderPicker(domain, event) {
+    event.stopPropagation();
+
+    const company = allCompanies.find(c => c.domain === domain);
+    if (!company) return;
+
+    let html = `
+        <div class="modal-header">
+            <h2>Add to Folder</h2>
+            <p>${escapeHtml(company.name)}</p>
+        </div>
+        <div class="folder-picker-content">
+    `;
+
+    if (companyFolders.length === 0) {
+        html += `
+            <p class="no-folders-message">No folders yet. Create one first:</p>
+            <div class="quick-create-folder">
+                <input type="text" id="quickFolderName" placeholder="Folder name..." class="quick-folder-input">
+                <button onclick="quickCreateFolderForCompany('${escapeHtml(domain)}')" class="btn-quick-create">Create & Add</button>
+            </div>
+        `;
+    } else {
+        html += '<div class="folder-picker-list">';
+        companyFolders.forEach(folder => {
+            const isInFolder = folder.companyDomains.includes(domain);
+            html += `
+                <div class="folder-picker-item ${isInFolder ? 'in-folder' : ''}"
+                     onclick="toggleCompanyInFolder('${escapeHtml(domain)}', '${folder.id}')">
+                    <span class="folder-picker-check">${isInFolder ? '✓' : ''}</span>
+                    <span class="folder-picker-name">${escapeHtml(folder.name)}</span>
+                    <span class="folder-picker-count">${folder.companyDomains.length} companies</span>
+                </div>
+            `;
+        });
+        html += '</div>';
+
+        html += `
+            <div class="quick-create-folder">
+                <input type="text" id="quickFolderName" placeholder="Or create new folder..." class="quick-folder-input">
+                <button onclick="quickCreateFolderForCompany('${escapeHtml(domain)}')" class="btn-quick-create">+</button>
+            </div>
+        `;
+    }
+
+    html += '</div>';
+
+    elements.companyModalBody.innerHTML = html;
+    elements.companyModal.style.display = 'flex';
+}
+
+// Toggle company in folder
+function toggleCompanyInFolder(domain, folderId) {
+    const folder = companyFolders.find(f => f.id === folderId);
+    if (!folder) return;
+
+    if (folder.companyDomains.includes(domain)) {
+        removeCompanyFromFolder(domain, folderId);
+    } else {
+        addCompanyToFolder(domain, folderId);
+    }
+
+    // Refresh the picker
+    showCompanyFolderPicker(domain, { stopPropagation: () => {} });
+}
+
+// Quick create folder for company
+function quickCreateFolderForCompany(domain) {
+    const input = document.getElementById('quickFolderName');
+    const name = input?.value.trim();
+
+    if (!name) {
+        alert('Please enter a folder name');
+        return;
+    }
+
+    if (companyFolders.some(f => f.name.toLowerCase() === name.toLowerCase())) {
+        alert('A folder with this name already exists');
+        return;
+    }
+
+    const folder = {
+        id: 'cf_' + Date.now().toString(),
+        name: name,
+        companyDomains: [domain],
+        createdAt: new Date().toISOString()
+    };
+
+    companyFolders.push(folder);
+    saveCompanyFolders();
+    renderFoldersNav();
+    closeCompanyModal();
+}
+
 // Global functions
 window.showCompanyDetails = showCompanyDetails;
 window.closeCompanyModal = closeCompanyModal;
@@ -630,3 +1048,7 @@ window.retryEnrichment = retryEnrichment;
 window.loadCompanies = loadCompanies;
 window.enrichContacts = enrichContacts;
 window.lookupContact = lookupContact;
+window.selectFolder = selectFolder;
+window.showCompanyFolderPicker = showCompanyFolderPicker;
+window.toggleCompanyInFolder = toggleCompanyInFolder;
+window.quickCreateFolderForCompany = quickCreateFolderForCompany;

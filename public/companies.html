@@ -7,53 +7,85 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body class="companies-page">
-    <div class="companies-container">
-        <header>
-            <nav class="main-nav">
-                <a href="/" class="nav-brand">JobFeeder</a>
-                <div class="nav-links">
-                    <a href="/" class="nav-link">Jobs</a>
-                    <a href="/companies.html" class="nav-link active">Companies</a>
+    <div class="companies-layout">
+        <!-- Folders Sidebar -->
+        <aside class="folders-sidebar" id="foldersSidebar">
+            <div class="folders-sidebar-header">
+                <h3>Folders</h3>
+                <button id="toggleSidebarBtn" class="btn-toggle-sidebar" title="Toggle sidebar">☰</button>
+            </div>
+            <div class="folders-sidebar-content">
+                <div class="new-folder-form">
+                    <input type="text" id="newFolderInput" placeholder="New folder name..." class="new-folder-input">
+                    <button id="createFolderBtn" class="btn-create-folder" title="Create folder">+</button>
                 </div>
-            </nav>
-            <p class="subtitle">Enriched company data from saved jobs</p>
-        </header>
-
-        <div class="companies-header">
-            <div class="companies-stats" id="companiesStats">
-                <div class="stat-item">
-                    <span class="stat-value" id="statTotal">0</span>
-                    <span class="stat-label">Total</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-value" id="statCompleted">0</span>
-                    <span class="stat-label">Enriched</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-value" id="statProcessing">0</span>
-                    <span class="stat-label">Processing</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-value" id="statFailed">0</span>
-                    <span class="stat-label">Failed</span>
+                <div class="folders-nav" id="foldersNav">
+                    <div class="folder-nav-item active" data-folder="all">
+                        <span class="folder-icon">📁</span>
+                        <span class="folder-name">All Companies</span>
+                        <span class="folder-count" id="allCompaniesCount">0</span>
+                    </div>
                 </div>
             </div>
-            <div class="companies-filters">
-                <input type="text" id="searchCompanies" placeholder="Search companies..." class="search-input">
-                <select id="filterStatus" class="filter-select">
-                    <option value="all">All Status</option>
-                    <option value="completed">Enriched</option>
-                    <option value="processing">Processing</option>
-                    <option value="pending">Pending</option>
-                    <option value="failed">Failed</option>
-                </select>
-            </div>
-        </div>
+        </aside>
 
-        <div id="companiesList" class="companies-list">
-            <div class="loading-companies">
-                <div class="spinner"></div>
-                <p>Loading companies...</p>
+        <!-- Main Content -->
+        <div class="companies-container">
+            <header>
+                <nav class="main-nav">
+                    <a href="/" class="nav-brand">JobFeeder</a>
+                    <div class="nav-links">
+                        <a href="/" class="nav-link">Jobs</a>
+                        <a href="/companies.html" class="nav-link active">Companies</a>
+                    </div>
+                </nav>
+                <p class="subtitle">Enriched company data from saved jobs</p>
+            </header>
+
+            <div class="companies-header">
+                <div class="current-folder-header">
+                    <h2 id="currentFolderTitle">All Companies</h2>
+                    <div class="folder-actions" id="folderActions" style="display: none;">
+                        <button id="renameFolderBtn" class="btn-folder-action" title="Rename folder">✏️</button>
+                        <button id="exportFolderBtn" class="btn-folder-action" title="Export to CSV">📥</button>
+                        <button id="deleteFolderBtn" class="btn-folder-action btn-danger" title="Delete folder">🗑️</button>
+                    </div>
+                </div>
+                <div class="companies-stats" id="companiesStats">
+                    <div class="stat-item">
+                        <span class="stat-value" id="statTotal">0</span>
+                        <span class="stat-label">Total</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" id="statCompleted">0</span>
+                        <span class="stat-label">Enriched</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" id="statProcessing">0</span>
+                        <span class="stat-label">Processing</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" id="statFailed">0</span>
+                        <span class="stat-label">Failed</span>
+                    </div>
+                </div>
+                <div class="companies-filters">
+                    <input type="text" id="searchCompanies" placeholder="Search companies..." class="search-input">
+                    <select id="filterStatus" class="filter-select">
+                        <option value="all">All Status</option>
+                        <option value="completed">Enriched</option>
+                        <option value="processing">Processing</option>
+                        <option value="pending">Pending</option>
+                        <option value="failed">Failed</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="companiesList" class="companies-list">
+                <div class="loading-companies">
+                    <div class="spinner"></div>
+                    <p>Loading companies...</p>
+                </div>
             </div>
         </div>
     </div>

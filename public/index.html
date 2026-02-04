@@ -165,8 +165,9 @@
                     <div class="form-group">
                         <label for="resultsLimit">Results per page</label>
                         <select id="resultsLimit">
+                            <option value="5" selected>5</option>
                             <option value="10">10</option>
-                            <option value="25" selected>25</option>
+                            <option value="25">25</option>
                             <option value="50">50</option>
                             <option value="100">100</option>
                         </select>
@@ -214,25 +215,6 @@
             <div id="modalBody"></div>
         </div>
     </div>
-
-    <!-- Job Folders Sidebar -->
-    <aside id="jobFoldersSidebar" class="job-folders-sidebar">
-        <div class="folders-header">
-            <h3>Job Folders</h3>
-            <button id="toggleFoldersBtn" class="btn-toggle-folders" title="Toggle folders">
-                <span id="totalJobsCount">0</span>
-            </button>
-        </div>
-        <div class="folders-body">
-            <div class="new-folder-section">
-                <input type="text" id="newFolderName" placeholder="Create new folder..." class="new-folder-input">
-                <button id="createFolderBtn" class="btn-create-folder" title="Create folder">+</button>
-            </div>
-            <div id="foldersList" class="folders-list">
-                <p class="no-folders">No folders yet. Create one above.</p>
-            </div>
-        </div>
-    </aside>
 
     <script src="app.js"></script>
 </body>
