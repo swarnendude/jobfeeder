@@ -216,6 +216,21 @@ app.get('/api/folders', async (req, res) => {
     }
 });
 
+// Get job-folder mappings (which jobs are in which folders)
+app.get('/api/job-folder-mappings', async (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not initialized' });
+    }
+
+    try {
+        const mappings = await db.getJobFolderMappings();
+        res.json(mappings);
+    } catch (error) {
+        console.error('Error fetching job-folder mappings:', error);
+        res.status(500).json({ error: 'Failed to fetch job-folder mappings' });
+    }
+});
+
 // Get single folder with jobs and prospects
 app.get('/api/folders/:id', async (req, res) => {
     if (!db) {
@@ -278,6 +293,37 @@ app.post('/api/folders/:id/jobs', async (req, res) => {
             error: 'Failed to add job to folder',
             message: error.message,
             details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
+    }
+});
+
+// Remove job from folder
+app.delete('/api/folders/:folderId/jobs/:jobId', async (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not initialized' });
+    }
+
+    const { folderId, jobId } = req.params;
+
+    try {
+        const folder = await db.getFolder(folderId);
+        if (!folder) {
+            return res.status(404).json({ error: 'Folder not found' });
+        }
+
+        await db.removeJobFromFolder(folderId, jobId);
+
+        console.log(`[API] Job ${jobId} removed from folder "${folder.name}" (ID: ${folderId})`);
+
+        res.json({
+            success: true,
+            message: `Job removed from folder "${folder.name}"`
+        });
+    } catch (error) {
+        console.error('Error removing job from folder:', error);
+        res.status(500).json({
+            error: 'Failed to remove job from folder',
+            message: error.message
         });
     }
 });

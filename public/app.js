@@ -351,8 +351,13 @@ function createJobCard(job, index) {
             <span class="folder-icon">+</span>
            </button>`;
 
+    // Show folder tags if job is in folders
+    const folderTagsHtml = jobInFolders.length > 0
+        ? `<div class="job-folder-tags">${jobInFolders.map(f => `<span class="folder-tag" onclick="showFolderPicker(${index})">${escapeHtml(f.name)}</span>`).join('')}</div>`
+        : '';
+
     return `
-        <div class="job-card" data-job-id="${job.id || index}">
+        <div class="job-card ${jobInFolders.length > 0 ? 'in-folder' : ''}" data-job-id="${job.id || index}">
             <div class="job-card-header">
                 ${logoHtml}
                 <div class="job-card-title">
@@ -361,6 +366,7 @@ function createJobCard(job, index) {
                 </div>
                 ${folderButton}
             </div>
+            ${folderTagsHtml}
 
             <div class="job-card-meta">${metaTags}</div>
 

@@ -440,16 +440,6 @@ function createCompanyCard(company) {
     const summary = enriched.company_summary || enriched.tagline ||
         (theirstack.industry ? `${theirstack.industry} company` : 'No description available');
 
-    // Check which folders contain this company
-    const foldersContaining = companyFolders.filter(f => f.companyDomains.includes(company.domain));
-    const folderButton = foldersContaining.length > 0
-        ? `<button class="btn-company-folder btn-in-folder" onclick="showCompanyFolderPicker('${escapeHtml(company.domain)}', event)" title="In: ${foldersContaining.map(f => f.name).join(', ')}">
-            📁 ${foldersContaining.length}
-           </button>`
-        : `<button class="btn-company-folder" onclick="showCompanyFolderPicker('${escapeHtml(company.domain)}', event)" title="Add to folder">
-            📁+
-           </button>`;
-
     return `
         <div class="company-card" onclick="showCompanyDetails('${escapeHtml(company.domain)}')">
             <div class="company-card-header">
@@ -461,7 +451,6 @@ function createCompanyCard(company) {
                     </a>
                 </div>
                 <div class="company-card-actions">
-                    ${folderButton}
                     <span class="company-status ${statusClass}">${statusLabel}</span>
                 </div>
             </div>
