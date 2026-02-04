@@ -431,7 +431,9 @@
                 const response = await fetch('/api/companies');
                 if (!response.ok) throw new Error('Failed to load companies');
 
-                const allCompanies = await response.json();
+                const data = await response.json();
+                // API returns { companies, stats } - extract the companies array
+                const allCompanies = data.companies || [];
                 folderCompanies = allCompanies.filter(c => domains.includes(c.domain));
             } catch (error) {
                 console.error('Error loading companies:', error);
