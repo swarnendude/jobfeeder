@@ -8,10 +8,8 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "start": "node server-postgres.js",
-    "dev": "node --watch server-postgres.js",
-    "start:sqlite": "node server.js",
-    "dev:sqlite": "node --watch server.js"
+    "start": "node server.js",
+    "dev": "node --watch server.js"
   },
   "keywords": [
     "jobs",
@@ -25,7 +23,6 @@
     "@google/generative-ai": "^0.24.1",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "pg": "^8.13.1",
-    "sql.js": "^1.13.0"
+    "pg": "^8.13.1"
   }
 }

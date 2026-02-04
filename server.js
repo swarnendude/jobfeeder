@@ -3,8 +3,9 @@ import express from 'express';
 import Anthropic from '@anthropic-ai/sdk';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { initializeDatabase } from './db.js';
+import { initializePostgresDatabase } from './db-postgres.js';
 import { CompanyEnricher } from './enrichment.js';
+import { WorkflowManager } from './workflow-manager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -12,9 +13,10 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Database and enricher (initialized async)
+// Database, enricher, and workflow manager (initialized async)
 let db = null;
 let enricher = null;
+let workflowManager = null;
 
 // Middleware
 app.use(express.json());
@@ -24,17 +26,19 @@ app.use(express.static(join(__dirname, 'public')));
 const THEIRSTACK_API_URL = 'https://api.theirstack.com/v1';
 const THEIRSTACK_API_KEY = process.env.THEIRSTACK_API_KEY;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const SIGNALHIRE_API_KEY = process.env.SIGNALHIRE_API_KEY;
+const DATABASE_URL = process.env.DATABASE_URL;
 
 // Initialize Anthropic client
 const anthropic = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
 
 // Cache Configuration
-const CACHE_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours in milliseconds
+const CACHE_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
 const searchCache = new Map();
 
 // Cache helper functions
 function getCacheKey(params) {
-    // Create a stable cache key from search parameters
     const sortedParams = Object.keys(params)
         .sort()
         .reduce((obj, key) => {
@@ -50,7 +54,6 @@ function getFromCache(key) {
 
     const now = Date.now();
     if (now - cached.timestamp > CACHE_TTL_MS) {
-        // Cache expired
         searchCache.delete(key);
         return null;
     }
@@ -81,7 +84,7 @@ function getCacheStats() {
     return { validEntries, expiredEntries, totalEntries: searchCache.size };
 }
 
-// Cleanup expired cache entries periodically (every hour)
+// Cleanup expired cache entries periodically
 setInterval(() => {
     const now = Date.now();
     let cleaned = 0;
@@ -94,7 +97,7 @@ setInterval(() => {
     if (cleaned > 0) {
         console.log(`Cache cleanup: removed ${cleaned} expired entries`);
     }
-}, 60 * 60 * 1000); // Run every hour
+}, 60 * 60 * 1000);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -102,11 +105,14 @@ app.get('/api/health', (req, res) => {
         status: 'ok',
         theirstack: !!THEIRSTACK_API_KEY,
         claude: !!ANTHROPIC_API_KEY,
+        gemini: !!GEMINI_API_KEY,
+        signalhire: !!SIGNALHIRE_API_KEY,
+        database: !!db,
         cache: getCacheStats()
     });
 });
 
-// Cache management endpoint
+// Cache management
 app.delete('/api/cache', (req, res) => {
     const stats = getCacheStats();
     searchCache.clear();
@@ -116,7 +122,6 @@ app.delete('/api/cache', (req, res) => {
     });
 });
 
-// Get cache info
 app.get('/api/cache', (req, res) => {
     const stats = getCacheStats();
     res.json({
@@ -132,7 +137,6 @@ app.post('/api/jobs/search', async (req, res) => {
     }
 
     try {
-        // Check cache first
         const cacheKey = getCacheKey(req.body);
         const cachedData = getFromCache(cacheKey);
 
@@ -164,8 +168,6 @@ app.post('/api/jobs/search', async (req, res) => {
         }
 
         const data = await response.json();
-
-        // Store in cache
         setInCache(cacheKey, data);
         console.log('Cached results for query:', req.body.job_title_pattern_or?.join(', ') || 'unknown');
 
@@ -176,355 +178,414 @@ app.post('/api/jobs/search', async (req, res) => {
     }
 });
 
-// Claude AI - Analyze job posting
-app.post('/api/ai/analyze-job', async (req, res) => {
-    if (!anthropic) {
-        return res.status(500).json({ error: 'Claude API key not configured' });
-    }
+// ===== FOLDER ENDPOINTS =====
 
-    const { job } = req.body;
-    if (!job) {
-        return res.status(400).json({ error: 'Job data required' });
-    }
-
-    try {
-        const message = await anthropic.messages.create({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 1024,
-            messages: [{
-                role: 'user',
-                content: `Analyze this job posting and provide a brief summary with key requirements, skills needed, and any notable aspects:
-
-Job Title: ${job.job_title}
-Company: ${job.company}
-Location: ${job.location || 'Not specified'}
-Salary: ${job.salary_string || 'Not specified'}
-
-Description:
-${job.description || 'No description available'}
-
-Provide a concise analysis in this format:
-1. Role Summary (2-3 sentences)
-2. Key Requirements (bullet points)
-3. Required Skills (bullet points)
-4. Notable Aspects (anything interesting about the role/company)`
-            }]
-        });
-
-        res.json({
-            analysis: message.content[0].text
-        });
-    } catch (error) {
-        console.error('Claude analysis error:', error);
-        res.status(500).json({ error: 'Failed to analyze job' });
-    }
-});
-
-// Claude AI - Generate cover letter
-app.post('/api/ai/cover-letter', async (req, res) => {
-    if (!anthropic) {
-        return res.status(500).json({ error: 'Claude API key not configured' });
-    }
-
-    const { job, userProfile } = req.body;
-    if (!job) {
-        return res.status(400).json({ error: 'Job data required' });
-    }
-
-    try {
-        const message = await anthropic.messages.create({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 2048,
-            messages: [{
-                role: 'user',
-                content: `Generate a professional cover letter for this job:
-
-Job Title: ${job.job_title}
-Company: ${job.company}
-Location: ${job.location || 'Not specified'}
-
-Job Description:
-${job.description || 'No description available'}
-
-${userProfile ? `
-Candidate Profile:
-${userProfile}
-` : 'Write a general cover letter that can be customized.'}
-
-Write a compelling, professional cover letter that:
-- Addresses the specific requirements mentioned in the job posting
-- Highlights relevant experience and skills
-- Shows enthusiasm for the role and company
-- Is concise (3-4 paragraphs)`
-            }]
-        });
-
-        res.json({
-            coverLetter: message.content[0].text
-        });
-    } catch (error) {
-        console.error('Claude cover letter error:', error);
-        res.status(500).json({ error: 'Failed to generate cover letter' });
-    }
-});
-
-// Claude AI - Match jobs to profile
-app.post('/api/ai/match-jobs', async (req, res) => {
-    if (!anthropic) {
-        return res.status(500).json({ error: 'Claude API key not configured' });
-    }
-
-    const { jobs, userProfile } = req.body;
-    if (!jobs || !Array.isArray(jobs) || jobs.length === 0) {
-        return res.status(400).json({ error: 'Jobs array required' });
-    }
-    if (!userProfile) {
-        return res.status(400).json({ error: 'User profile required' });
-    }
-
-    try {
-        const jobSummaries = jobs.map((job, i) =>
-            `${i + 1}. ${job.job_title} at ${job.company} (${job.location || 'Location N/A'})`
-        ).join('\n');
-
-        const message = await anthropic.messages.create({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 2048,
-            messages: [{
-                role: 'user',
-                content: `Given this candidate profile and list of jobs, rank the jobs by fit and explain why:
-
-Candidate Profile:
-${userProfile}
-
-Jobs:
-${jobSummaries}
-
-For each job, provide:
-1. Match score (1-10)
-2. Brief explanation of fit
-3. Any concerns or gaps
-
-Rank from best to worst fit.`
-            }]
-        });
-
-        res.json({
-            matching: message.content[0].text
-        });
-    } catch (error) {
-        console.error('Claude matching error:', error);
-        res.status(500).json({ error: 'Failed to match jobs' });
-    }
-});
-
-// === Company Enrichment Endpoints ===
-
-// Trigger enrichment for a company
-app.post('/api/companies/enrich', async (req, res) => {
-    if (!db || !enricher) {
+// Create new folder
+app.post('/api/folders', async (req, res) => {
+    if (!db) {
         return res.status(503).json({ error: 'Database not initialized' });
     }
 
-    const { domain, name, theirstack_data } = req.body;
+    const { name, description } = req.body;
 
-    if (!domain || !name) {
-        return res.status(400).json({ error: 'Domain and name are required' });
+    if (!name) {
+        return res.status(400).json({ error: 'Folder name is required' });
     }
 
     try {
-        // Check if company exists
-        let company = db.getCompany(domain);
+        const folder = await db.createFolder(name, description);
+        res.json(folder);
+    } catch (error) {
+        console.error('Error creating folder:', error);
+        res.status(500).json({ error: 'Failed to create folder' });
+    }
+});
 
-        if (company) {
-            if (company.enrichment_status === 'completed') {
-                return res.json({
-                    company_id: company.id,
-                    status: 'exists',
-                    message: 'Company already enriched'
-                });
-            }
+// Get all folders
+app.get('/api/folders', async (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not initialized' });
+    }
 
-            if (company.enrichment_status === 'processing') {
-                return res.json({
-                    company_id: company.id,
-                    status: 'processing',
-                    message: 'Enrichment in progress'
-                });
-            }
-        } else {
-            // Create new company record
-            const companyId = db.createCompany(domain, name, theirstack_data);
-            company = { id: companyId };
+    try {
+        const folders = await db.getAllFolders();
+        res.json(folders);
+    } catch (error) {
+        console.error('Error fetching folders:', error);
+        res.status(500).json({ error: 'Failed to fetch folders' });
+    }
+});
+
+// Get single folder with jobs and prospects
+app.get('/api/folders/:id', async (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not initialized' });
+    }
+
+    const { id } = req.params;
+
+    try {
+        const folder = await db.getFolder(id);
+        if (!folder) {
+            return res.status(404).json({ error: 'Folder not found' });
         }
 
-        // Trigger async enrichment (non-blocking)
-        enricher.enrichWithRetry(domain, name)
-            .then(result => console.log(`[Server] Enrichment completed for ${domain}`))
-            .catch(error => console.error(`[Server] Enrichment failed for ${domain}:`, error.message));
+        const jobs = await db.getJobsByFolder(id);
+        const prospects = await db.getProspectsByFolder(id);
+        const tasks = await db.getTasksByFolder(id);
 
         res.json({
-            company_id: company.id,
-            status: 'pending',
-            message: 'Enrichment started'
+            folder,
+            jobs,
+            prospects,
+            tasks
         });
-
     } catch (error) {
-        console.error('[Server] Enrichment trigger error:', error);
-        res.status(500).json({ error: 'Failed to start enrichment' });
+        console.error('Error fetching folder:', error);
+        res.status(500).json({ error: 'Failed to fetch folder' });
     }
 });
 
-// Get company data
-app.get('/api/companies/:domain', (req, res) => {
-    if (!db) {
-        return res.status(503).json({ error: 'Database not initialized' });
+// Add job to folder
+app.post('/api/folders/:id/jobs', async (req, res) => {
+    if (!db || !workflowManager) {
+        return res.status(503).json({ error: 'Database or workflow manager not initialized' });
     }
 
-    const { domain } = req.params;
-
-    const company = db.getCompany(domain);
-
-    if (!company) {
-        return res.status(404).json({ error: 'Company not found' });
-    }
-
-    res.json(company);
-});
-
-// Get enrichment status
-app.get('/api/companies/:domain/status', (req, res) => {
-    if (!db) {
-        return res.status(503).json({ error: 'Database not initialized' });
-    }
-
-    const { domain } = req.params;
-
-    const company = db.getCompany(domain);
-
-    if (!company) {
-        return res.status(404).json({ error: 'Company not found' });
-    }
-
-    res.json({
-        domain: company.domain,
-        status: company.enrichment_status,
-        error: company.enrichment_error,
-        attempts: company.enrichment_attempts
-    });
-});
-
-// Retry failed enrichment
-app.post('/api/companies/:domain/retry', async (req, res) => {
-    if (!db || !enricher) {
-        return res.status(503).json({ error: 'Database not initialized' });
-    }
-
-    const { domain } = req.params;
-
-    const company = db.getCompany(domain);
-
-    if (!company) {
-        return res.status(404).json({ error: 'Company not found' });
-    }
-
-    if (company.enrichment_status !== 'failed') {
-        return res.status(400).json({
-            error: 'Company is not in failed state',
-            currentStatus: company.enrichment_status
-        });
-    }
-
-    // Reset for retry
-    db.resetForRetry(domain);
-
-    // Trigger enrichment
-    enricher.enrichWithRetry(domain, company.name)
-        .catch(error => console.error(`[Server] Retry enrichment failed for ${domain}:`, error.message));
-
-    res.json({ status: 'pending', message: 'Retry initiated' });
-});
-
-// Get all companies (admin/debug endpoint)
-app.get('/api/companies', (req, res) => {
-    if (!db) {
-        return res.status(503).json({ error: 'Database not initialized' });
-    }
-
-    const companies = db.getAllCompanies();
-    const stats = db.getStats();
-
-    res.json({ companies, stats });
-});
-
-// Enrich contacts for a company using SignalHire
-app.post('/api/companies/:domain/enrich-contacts', async (req, res) => {
-    if (!db || !enricher) {
-        return res.status(503).json({ error: 'Database or enricher not initialized' });
-    }
-
-    const { domain } = req.params;
-
-    const company = db.getCompany(domain);
-    if (!company) {
-        return res.status(404).json({ error: 'Company not found' });
-    }
-
-    if (!company.enriched_data) {
-        return res.status(400).json({ error: 'Company has not been enriched yet' });
-    }
-
-    const contacts = company.enriched_data.target_contacts || [];
-    if (contacts.length === 0) {
-        return res.status(400).json({ error: 'No target contacts found for this company' });
-    }
+    const { id } = req.params;
+    const jobData = req.body;
 
     try {
-        // Trigger async contact enrichment
-        enricher.enrichCompanyContacts(domain)
-            .then(result => console.log(`[Server] Contact enrichment completed for ${domain}: ${result.length} contacts`))
-            .catch(error => console.error(`[Server] Contact enrichment failed for ${domain}:`, error.message));
+        const folder = await db.getFolder(id);
+        if (!folder) {
+            return res.status(404).json({ error: 'Folder not found' });
+        }
+
+        // Use workflow manager to add job (triggers automatic enrichment)
+        const job = await workflowManager.addJobToFolder(id, jobData);
+
+        res.json({
+            job,
+            message: 'Job added successfully. Company enrichment started in background.'
+        });
+    } catch (error) {
+        console.error('Error adding job to folder:', error);
+        res.status(500).json({ error: 'Failed to add job to folder' });
+    }
+});
+
+// Collect prospects for folder
+app.post('/api/folders/:id/collect-prospects', async (req, res) => {
+    if (!db || !workflowManager) {
+        return res.status(503).json({ error: 'Database or workflow manager not initialized' });
+    }
+
+    const { id } = req.params;
+
+    try {
+        const folder = await db.getFolder(id);
+        if (!folder) {
+            return res.status(404).json({ error: 'Folder not found' });
+        }
+
+        // Start prospect collection in background
+        workflowManager.collectProspectsForFolder(id)
+            .then(prospects => {
+                console.log(`[Server] Prospect collection completed for folder ${id}: ${prospects.length} prospects`);
+            })
+            .catch(error => {
+                console.error(`[Server] Prospect collection failed for folder ${id}:`, error.message);
+            });
 
         res.json({
             status: 'processing',
-            message: `Enriching ${contacts.length} contacts`,
-            contacts_count: contacts.length
+            message: 'Prospect collection started in background'
         });
     } catch (error) {
-        console.error('[Server] Contact enrichment trigger error:', error);
-        res.status(500).json({ error: 'Failed to start contact enrichment' });
+        console.error('Error starting prospect collection:', error);
+        res.status(500).json({ error: 'Failed to start prospect collection' });
     }
 });
 
-// Search for a specific person's contact info
-app.post('/api/contacts/lookup', async (req, res) => {
-    if (!enricher) {
-        return res.status(503).json({ error: 'Enricher not initialized' });
+// Auto-select top prospects
+app.post('/api/folders/:id/auto-select', async (req, res) => {
+    if (!db || !workflowManager) {
+        return res.status(503).json({ error: 'Database or workflow manager not initialized' });
     }
 
-    const { name, linkedin_url, company_domain, title } = req.body;
+    const { id } = req.params;
 
-    if (!name && !linkedin_url) {
-        return res.status(400).json({ error: 'Name or LinkedIn URL is required' });
+    try {
+        const folder = await db.getFolder(id);
+        if (!folder) {
+            return res.status(404).json({ error: 'Folder not found' });
+        }
+
+        await workflowManager.autoSelectProspects(id);
+
+        res.json({
+            status: 'success',
+            message: 'Top 2-3 prospects per company have been auto-selected'
+        });
+    } catch (error) {
+        console.error('Error auto-selecting prospects:', error);
+        res.status(500).json({ error: 'Failed to auto-select prospects' });
+    }
+});
+
+// Manually select/deselect prospect
+app.patch('/api/prospects/:id/select', async (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not initialized' });
+    }
+
+    const { id } = req.params;
+    const { selected } = req.body;
+
+    try {
+        await db.updateProspectSelection(id, selected, false);
+        res.json({ status: 'success' });
+    } catch (error) {
+        console.error('Error updating prospect selection:', error);
+        res.status(500).json({ error: 'Failed to update prospect selection' });
+    }
+});
+
+// Enrich selected prospects with contact info
+app.post('/api/folders/:id/enrich-contacts', async (req, res) => {
+    if (!db || !workflowManager) {
+        return res.status(503).json({ error: 'Database or workflow manager not initialized' });
+    }
+
+    const { id } = req.params;
+
+    try {
+        const folder = await db.getFolder(id);
+        if (!folder) {
+            return res.status(404).json({ error: 'Folder not found' });
+        }
+
+        // Start contact enrichment in background
+        workflowManager.enrichSelectedProspects(id)
+            .then(result => {
+                console.log(`[Server] Contact enrichment completed for folder ${id}: ${result.enriched}/${result.total}`);
+            })
+            .catch(error => {
+                console.error(`[Server] Contact enrichment failed for folder ${id}:`, error.message);
+            });
+
+        res.json({
+            status: 'processing',
+            message: 'Contact enrichment started in background'
+        });
+    } catch (error) {
+        console.error('Error starting contact enrichment:', error);
+        res.status(500).json({ error: error.message || 'Failed to start contact enrichment' });
+    }
+});
+
+// Delete folder
+app.delete('/api/folders/:id', async (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not initialized' });
+    }
+
+    const { id } = req.params;
+
+    try {
+        await db.deleteFolder(id);
+        res.json({ status: 'success', message: 'Folder deleted' });
+    } catch (error) {
+        console.error('Error deleting folder:', error);
+        res.status(500).json({ error: 'Failed to delete folder' });
+    }
+});
+
+// ===== KNOWLEDGE BASE ENDPOINTS =====
+
+// Get all knowledge base entries
+app.get('/api/knowledge', async (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not initialized' });
     }
 
     try {
-        const contact = {
-            name,
-            linkedin_url,
-            title
-        };
-
-        const enrichedContact = await enricher.lookupContactSignalHire(contact, company_domain);
-
-        if (enrichedContact && enrichedContact.contact_enriched) {
-            res.json({ success: true, contact: enrichedContact });
-        } else {
-            res.json({ success: false, message: 'Contact information not found', contact: enrichedContact });
-        }
+        const knowledge = await db.getAllKnowledge();
+        res.json(knowledge);
     } catch (error) {
-        console.error('[Server] Contact lookup error:', error);
-        res.status(500).json({ error: 'Failed to lookup contact' });
+        console.error('Error fetching knowledge base:', error);
+        res.status(500).json({ error: 'Failed to fetch knowledge base' });
+    }
+});
+
+// Add knowledge base entry
+app.post('/api/knowledge', async (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not initialized' });
+    }
+
+    const { type, title, content, metadata } = req.body;
+
+    if (!type || !title || !content) {
+        return res.status(400).json({ error: 'Type, title, and content are required' });
+    }
+
+    try {
+        const entry = await db.addKnowledge(type, title, content, metadata);
+        res.json(entry);
+    } catch (error) {
+        console.error('Error adding knowledge:', error);
+        res.status(500).json({ error: 'Failed to add knowledge' });
+    }
+});
+
+// Update knowledge base entry
+app.patch('/api/knowledge/:id', async (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not initialized' });
+    }
+
+    const { id } = req.params;
+    const { content, metadata } = req.body;
+
+    try {
+        await db.updateKnowledge(id, content, metadata);
+        res.json({ status: 'success' });
+    } catch (error) {
+        console.error('Error updating knowledge:', error);
+        res.status(500).json({ error: 'Failed to update knowledge' });
+    }
+});
+
+// ===== NOTIFICATION ENDPOINTS =====
+
+// Get unread notifications
+app.get('/api/notifications/unread', async (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not initialized' });
+    }
+
+    try {
+        const notifications = await db.getUnreadNotifications();
+        res.json(notifications);
+    } catch (error) {
+        console.error('Error fetching notifications:', error);
+        res.status(500).json({ error: 'Failed to fetch notifications' });
+    }
+});
+
+// Get recent notifications
+app.get('/api/notifications', async (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not initialized' });
+    }
+
+    try {
+        const notifications = await db.getRecentNotifications(50);
+        res.json(notifications);
+    } catch (error) {
+        console.error('Error fetching notifications:', error);
+        res.status(500).json({ error: 'Failed to fetch notifications' });
+    }
+});
+
+// Mark notification as read
+app.patch('/api/notifications/:id/read', async (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not initialized' });
+    }
+
+    const { id } = req.params;
+
+    try {
+        await db.markNotificationRead(id);
+        res.json({ status: 'success' });
+    } catch (error) {
+        console.error('Error marking notification as read:', error);
+        res.status(500).json({ error: 'Failed to mark notification as read' });
+    }
+});
+
+// Mark all notifications as read
+app.post('/api/notifications/read-all', async (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not initialized' });
+    }
+
+    try {
+        await db.markAllNotificationsRead();
+        res.json({ status: 'success' });
+    } catch (error) {
+        console.error('Error marking all notifications as read:', error);
+        res.status(500).json({ error: 'Failed to mark all notifications as read' });
+    }
+});
+
+// ===== BACKGROUND TASK ENDPOINTS =====
+
+// Get all tasks
+app.get('/api/tasks', async (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not initialized' });
+    }
+
+    try {
+        const tasks = await db.getRecentTasks(100);
+        res.json(tasks);
+    } catch (error) {
+        console.error('Error fetching tasks:', error);
+        res.status(500).json({ error: 'Failed to fetch tasks' });
+    }
+});
+
+// Get active tasks
+app.get('/api/tasks/active', async (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not initialized' });
+    }
+
+    try {
+        const tasks = await db.getActiveTasks();
+        res.json(tasks);
+    } catch (error) {
+        console.error('Error fetching active tasks:', error);
+        res.status(500).json({ error: 'Failed to fetch active tasks' });
+    }
+});
+
+// ===== COMPANY ENDPOINTS (Legacy support) =====
+
+app.get('/api/companies', async (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not initialized' });
+    }
+
+    try {
+        const companies = await db.getAllCompanies();
+        const stats = await db.getStats();
+        res.json({ companies, stats });
+    } catch (error) {
+        console.error('Error fetching companies:', error);
+        res.status(500).json({ error: 'Failed to fetch companies' });
+    }
+});
+
+app.get('/api/companies/:domain', async (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not initialized' });
+    }
+
+    const { domain } = req.params;
+
+    try {
+        const company = await db.getCompany(domain);
+        if (!company) {
+            return res.status(404).json({ error: 'Company not found' });
+        }
+        res.json(company);
+    } catch (error) {
+        console.error('Error fetching company:', error);
+        res.status(500).json({ error: 'Failed to fetch company' });
     }
 });
 
@@ -536,14 +597,15 @@ app.get('*', (req, res) => {
 // Initialize database and start server
 async function startServer() {
     try {
-        // Initialize database
-        db = await initializeDatabase();
-        console.log('Database initialized');
+        if (!DATABASE_URL) {
+            throw new Error('DATABASE_URL environment variable is required');
+        }
 
-        // Initialize enricher if any AI provider is configured (Gemini preferred for cost)
-        const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-        const SIGNALHIRE_API_KEY = process.env.SIGNALHIRE_API_KEY;
+        // Initialize PostgreSQL database
+        db = await initializePostgresDatabase(DATABASE_URL);
+        console.log('PostgreSQL database initialized');
 
+        // Initialize enricher
         if (GEMINI_API_KEY || anthropic) {
             enricher = new CompanyEnricher({
                 anthropicClient: anthropic,
@@ -556,6 +618,17 @@ async function startServer() {
             console.log('Company enricher not available (need GEMINI_API_KEY or ANTHROPIC_API_KEY)');
         }
 
+        // Initialize workflow manager
+        if (enricher) {
+            workflowManager = new WorkflowManager({
+                db: db,
+                enricher: enricher,
+                signalHireApiKey: SIGNALHIRE_API_KEY,
+                geminiApiKey: GEMINI_API_KEY
+            });
+            console.log('Workflow manager initialized');
+        }
+
         // Start server
         app.listen(PORT, () => {
             console.log(`JobFeeder server running on port ${PORT}`);
@@ -563,6 +636,7 @@ async function startServer() {
             console.log(`Claude API: ${ANTHROPIC_API_KEY ? 'Configured' : 'Not configured'}`);
             console.log(`Gemini API: ${GEMINI_API_KEY ? 'Configured (used for enrichment)' : 'Not configured'}`);
             console.log(`SignalHire API: ${SIGNALHIRE_API_KEY ? 'Configured' : 'Not configured'}`);
+            console.log(`Database: PostgreSQL (Render.com)`);
         });
     } catch (error) {
         console.error('Failed to start server:', error);
