@@ -846,35 +846,19 @@ function toggleRawData(header) {
     pre.style.display = pre.style.display === 'none' ? 'block' : 'none';
 }
 
-// Job Folder Functions
+// Job Folder Functions - Overridden by app-folder-integration.js to use PostgreSQL API
+// These stubs remain for compatibility but are replaced at runtime
 function loadJobFolders() {
-    try {
-        const stored = localStorage.getItem(JOB_FOLDERS_KEY);
-        jobFolders = stored ? JSON.parse(stored) : [];
-        lastUsedFolderId = localStorage.getItem(LAST_FOLDER_KEY);
-        renderFolders();
-        updateTotalJobsCount();
-    } catch (e) {
-        console.error('Failed to load job folders:', e);
-        jobFolders = [];
-    }
+    console.warn('loadJobFolders stub - will be overridden by app-folder-integration.js');
+    jobFolders = [];
 }
 
 function saveFolders() {
-    try {
-        localStorage.setItem(JOB_FOLDERS_KEY, JSON.stringify(jobFolders));
-    } catch (e) {
-        console.error('Failed to save job folders:', e);
-    }
+    console.warn('saveFolders stub - will be overridden by app-folder-integration.js');
 }
 
 function saveLastUsedFolder(folderId) {
-    lastUsedFolderId = folderId;
-    try {
-        localStorage.setItem(LAST_FOLDER_KEY, folderId);
-    } catch (e) {
-        console.error('Failed to save last folder:', e);
-    }
+    console.warn('saveLastUsedFolder stub - will be overridden by app-folder-integration.js');
 }
 
 function createNewFolder() {

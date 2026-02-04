@@ -19,7 +19,9 @@
       "Bash(git push)",
       "Bash(git fetch:*)",
       "Bash([ -f .env.example ])",
-      "Bash(npm uninstall:*)"
+      "Bash(npm uninstall:*)",
+      "Bash(ls:*)",
+      "Bash(grep:*)"
     ]
   }
 }
