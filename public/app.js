@@ -33,13 +33,6 @@ const elements = {
     // Search history
     searchHistoryList: $('searchHistoryList'),
     clearHistoryBtn: $('clearHistoryBtn'),
-    // Job folders
-    jobFoldersSidebar: $('jobFoldersSidebar'),
-    totalJobsCount: $('totalJobsCount'),
-    newFolderName: $('newFolderName'),
-    createFolderBtn: $('createFolderBtn'),
-    foldersList: $('foldersList'),
-    toggleFoldersBtn: $('toggleFoldersBtn'),
     // Form inputs
     jobTitle: $('jobTitle'),
     jobSeniority: $('jobSeniority'),
@@ -68,12 +61,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     elements.clearHistoryBtn.addEventListener('click', clearSearchHistory);
     elements.jobModal.addEventListener('click', (e) => {
         if (e.target === elements.jobModal) closeModal();
-    });
-    // Folder event listeners
-    elements.toggleFoldersBtn.addEventListener('click', toggleFolders);
-    elements.createFolderBtn.addEventListener('click', createNewFolder);
-    elements.newFolderName.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') createNewFolder();
     });
 });
 
@@ -861,33 +848,6 @@ function saveLastUsedFolder(folderId) {
     console.warn('saveLastUsedFolder stub - will be overridden by app-folder-integration.js');
 }
 
-function createNewFolder() {
-    const name = elements.newFolderName.value.trim();
-    if (!name) {
-        alert('Please enter a folder name');
-        return;
-    }
-
-    // Check for duplicate name
-    if (jobFolders.some(f => f.name.toLowerCase() === name.toLowerCase())) {
-        alert('A folder with this name already exists');
-        return;
-    }
-
-    const folder = {
-        id: Date.now().toString(),
-        name: name,
-        jobs: [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-    };
-
-    jobFolders.unshift(folder);
-    saveFolders();
-    saveLastUsedFolder(folder.id);
-    elements.newFolderName.value = '';
-    renderFolders();
-}
 
 function getJobFolders(job, companyName) {
     const jobId = job.id || `${job.job_title}-${companyName}`;
@@ -995,53 +955,10 @@ function exportFolder(folderId) {
     downloadFile(csv, `${folder.name}.csv`, 'text/csv');
 }
 
-function toggleFolders() {
-    elements.jobFoldersSidebar.classList.toggle('expanded');
-}
-
-function toggleFolderExpand(folderId) {
-    const folderEl = document.querySelector(`.folder-item[data-id="${folderId}"]`);
-    if (folderEl) {
-        folderEl.classList.toggle('expanded');
-    }
-}
-
-function updateTotalJobsCount() {
-    const total = jobFolders.reduce((sum, folder) => sum + folder.jobs.length, 0);
-    elements.totalJobsCount.textContent = total;
-}
 
 function renderFolders() {
-    if (jobFolders.length === 0) {
-        elements.foldersList.innerHTML = '<p class="no-folders">No folders yet. Create one above.</p>';
-        return;
-    }
-
-    elements.foldersList.innerHTML = jobFolders.map(folder => `
-        <div class="folder-item" data-id="${folder.id}">
-            <div class="folder-header" onclick="toggleFolderExpand('${folder.id}')">
-                <span class="folder-expand-icon">&#9658;</span>
-                <span class="folder-name">${escapeHtml(folder.name)}</span>
-                <span class="folder-job-count">${folder.jobs.length}</span>
-                <div class="folder-actions">
-                    <button class="btn-folder-export" onclick="event.stopPropagation(); exportFolder('${folder.id}')" title="Export CSV">&#8681;</button>
-                    <button class="btn-folder-delete" onclick="event.stopPropagation(); deleteFolder('${folder.id}')" title="Delete folder">&times;</button>
-                </div>
-            </div>
-            <div class="folder-jobs">
-                ${folder.jobs.length === 0 ? '<p class="no-folder-jobs">No jobs in this folder</p>' :
-                    folder.jobs.map(job => `
-                        <div class="folder-job-item" onclick="showSavedJobDetails('${job.id}', '${folder.id}')">
-                            <button class="folder-job-remove" onclick="event.stopPropagation(); removeJobFromFolder('${job.id}', '${folder.id}')">&times;</button>
-                            <div class="folder-job-title">${escapeHtml(job.job_title)}</div>
-                            <div class="folder-job-company">${escapeHtml(job.company)}</div>
-                            ${job.url ? `<a href="${escapeHtml(job.url)}" target="_blank" class="folder-job-link" onclick="event.stopPropagation()">View</a>` : ''}
-                        </div>
-                    `).join('')
-                }
-            </div>
-        </div>
-    `).join('');
+    // Folder sidebar UI has been removed - folders are managed through the job picker modal only
+    console.log('renderFolders called - no-op since sidebar removed');
 }
 
 function showFolderPicker(index) {
@@ -1542,7 +1459,6 @@ window.toggleRawData = toggleRawData;
 window.showFolderPicker = showFolderPicker;
 window.toggleJobInFolder = toggleJobInFolder;
 window.quickCreateFolder = quickCreateFolder;
-window.toggleFolderExpand = toggleFolderExpand;
 window.exportFolder = exportFolder;
 window.deleteFolder = deleteFolder;
 window.removeJobFromFolder = removeJobFromFolder;

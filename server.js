@@ -264,9 +264,11 @@ app.post('/api/folders/:id/jobs', async (req, res) => {
         // Use workflow manager to add job (triggers automatic enrichment)
         const job = await workflowManager.addJobToFolder(id, jobData);
 
+        console.log(`[API] Job "${jobData.job_title}" added to folder "${folder.name}" (ID: ${id})`);
+
         res.json({
             job,
-            message: 'Job added successfully. Company enrichment started in background.'
+            message: `Job "${jobData.job_title}" added to folder "${folder.name}". Company enrichment started in background.`
         });
     } catch (error) {
         console.error('Error adding job to folder:', error);

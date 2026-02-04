@@ -24,6 +24,9 @@ export async function initializePostgresDatabase(connectionUrl) {
     // Create all tables
     await createTables();
 
+    // Run migrations for existing databases
+    await runMigrations();
+
     return new PostgresDatabase();
 }
 
@@ -123,7 +126,8 @@ async function createTables() {
                 error_message TEXT,
                 started_at TIMESTAMP,
                 completed_at TIMESTAMP,
-                created_at TIMESTAMP DEFAULT NOW()
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
             )
         `);
 
@@ -181,6 +185,35 @@ async function createTables() {
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('Error creating tables:', error);
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
+async function runMigrations() {
+    const client = await pool.connect();
+
+    try {
+        console.log('Running database migrations...');
+
+        // Migration: Add updated_at column to background_tasks if it doesn't exist
+        await client.query(`
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'background_tasks' AND column_name = 'updated_at'
+                ) THEN
+                    ALTER TABLE background_tasks ADD COLUMN updated_at TIMESTAMP DEFAULT NOW();
+                    RAISE NOTICE 'Added updated_at column to background_tasks table';
+                END IF;
+            END $$;
+        `);
+
+        console.log('Database migrations completed successfully');
+    } catch (error) {
+        console.error('Error running migrations:', error);
         throw error;
     } finally {
         client.release();
@@ -260,10 +293,16 @@ export class PostgresDatabase {
             JSON.stringify(jobData.raw_data || {})
         ]);
 
-        // Update folder timestamp
+        // Update folder timestamp and get folder name for logging
+        const folderResult = await pool.query('SELECT name FROM folders WHERE id = $1', [folderId]);
         await pool.query('UPDATE folders SET updated_at = NOW() WHERE id = $1', [folderId]);
 
-        return result.rows[0];
+        const job = result.rows[0];
+        const folderName = folderResult.rows[0]?.name || 'Unknown Folder';
+
+        console.log(`✅ Job added: "${jobData.job_title}" at ${jobData.company_name} → Folder: "${folderName}" (ID: ${folderId})`);
+
+        return job;
     }
 
     async getJobsByFolder(folderId) {
@@ -473,8 +512,8 @@ export class PostgresDatabase {
 
     async updateTaskStatus(id, status, progress = null, errorMessage = null) {
         const updates = ['status = $1', 'updated_at = NOW()'];
-        const values = [status, id];
-        let paramIndex = 2;
+        const values = [status];
+        let paramIndex = 1;
 
         if (status === 'processing' && progress === 0) {
             updates.push('started_at = NOW()');
@@ -485,17 +524,23 @@ export class PostgresDatabase {
         }
 
         if (progress !== null) {
-            updates.push(`progress = $${++paramIndex}`);
-            values.splice(1, 0, progress);
+            paramIndex++;
+            updates.push(`progress = $${paramIndex}`);
+            values.push(progress);
         }
 
         if (errorMessage !== null) {
-            updates.push(`error_message = $${++paramIndex}`);
-            values.splice(paramIndex - 2, 0, errorMessage);
+            paramIndex++;
+            updates.push(`error_message = $${paramIndex}`);
+            values.push(errorMessage);
         }
 
+        // Add id as the last parameter
+        paramIndex++;
+        values.push(id);
+
         await pool.query(
-            `UPDATE background_tasks SET ${updates.join(', ')} WHERE id = $${paramIndex + 1}`,
+            `UPDATE background_tasks SET ${updates.join(', ')} WHERE id = $${paramIndex}`,
             values
         );
     }

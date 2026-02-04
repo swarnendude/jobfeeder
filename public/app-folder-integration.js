@@ -127,8 +127,12 @@ async function addJobToFolderAPI(index, folderId) {
 
         const result = await response.json();
 
-        // Show success message
-        showSuccessMessage('Job added to folder! Company enrichment started in background.');
+        // Get folder name for the message
+        const folder = jobFolders.find(f => f.id == folderId);
+        const folderName = folder ? folder.name : 'folder';
+
+        // Show success message with job and folder details
+        showSuccessMessage(`✅ "${job.job_title}" at ${companyName} added to "${folderName}"`);
 
         // Reload folders to reflect changes
         await loadJobFolders();
