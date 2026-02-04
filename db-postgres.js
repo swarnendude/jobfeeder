@@ -232,14 +232,18 @@ export class PostgresDatabase {
     // ===== JOB METHODS =====
 
     async addJobToFolder(folderId, jobData) {
+        // Handle ON CONFLICT only if theirstack_job_id is provided
+        const hasJobId = jobData.theirstack_job_id && jobData.theirstack_job_id !== null;
+        const conflictClause = hasJobId
+            ? 'ON CONFLICT (theirstack_job_id) DO UPDATE SET folder_id = EXCLUDED.folder_id'
+            : '';
+
         const result = await pool.query(`
             INSERT INTO jobs (
                 folder_id, theirstack_job_id, job_title, company_name, company_domain,
                 location, country, salary_string, description, job_url, posted_date, raw_data
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-            ON CONFLICT (theirstack_job_id) DO UPDATE SET
-                folder_id = EXCLUDED.folder_id,
-                updated_at = NOW()
+            ${conflictClause}
             RETURNING *
         `, [
             folderId,

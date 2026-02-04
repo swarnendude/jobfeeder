@@ -270,7 +270,13 @@ app.post('/api/folders/:id/jobs', async (req, res) => {
         });
     } catch (error) {
         console.error('Error adding job to folder:', error);
-        res.status(500).json({ error: 'Failed to add job to folder' });
+        console.error('Error stack:', error.stack);
+        console.error('Job data received:', JSON.stringify(jobData, null, 2));
+        res.status(500).json({
+            error: 'Failed to add job to folder',
+            message: error.message,
+            details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
     }
 });
 
