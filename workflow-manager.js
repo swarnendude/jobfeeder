@@ -34,12 +34,13 @@ export class WorkflowManager {
             domain: jobData.domain
         });
 
-        // Add job to database
+        // Add job to database (this also creates/gets the company via getOrCreateCompany)
         const job = await this.db.addJobToFolder(folderId, {
             theirstack_job_id: jobData.id || null,
             job_title: jobData.job_title,
             company_name: jobData.company,
             company_domain: jobData.domain,
+            company_data: jobData.theirstack_company_data || null,  // Pass company data for storage
             location: jobData.location,
             country: jobData.country,
             salary_string: jobData.salary_string,
@@ -49,30 +50,24 @@ export class WorkflowManager {
             raw_data: jobData
         });
 
-        // Check if company exists
-        console.log(`[Workflow] Checking if company exists for domain: "${jobData.domain}"`);
-        let company = await this.db.getCompany(jobData.domain);
-        console.log(`[Workflow] Company lookup result:`, company ? `Found (status: ${company.enrichment_status})` : 'Not found');
+        // Check if company needs enrichment
+        console.log(`[Workflow] Checking company enrichment status for domain: "${jobData.domain}"`);
+        const company = await this.db.getCompany(jobData.domain);
 
-        if (!company) {
-            // Create company entry
-            console.log(`[Workflow] Creating new company: ${jobData.company} (${jobData.domain})`);
-            company = await this.db.createCompany(
-                jobData.domain,
-                jobData.company,
-                jobData.theirstack_company_data || null,
-                jobData.employee_count || null
-            );
+        if (company) {
+            console.log(`[Workflow] Company found: ${company.name} (status: ${company.enrichment_status})`);
 
-            // Trigger automatic enrichment in background
-            console.log(`[Workflow] Triggering automatic enrichment for ${jobData.domain}`);
-            this.enrichCompany(folderId, jobData.domain, jobData.company)
-                .catch(err => console.error(`[Workflow] Enrichment failed for ${jobData.domain}:`, err));
-        } else if (company.enrichment_status === 'failed') {
-            // Retry failed enrichment
-            console.log(`[Workflow] Retrying failed enrichment for ${jobData.domain}`);
-            this.enrichCompany(folderId, jobData.domain, jobData.company)
-                .catch(err => console.error(`[Workflow] Retry enrichment failed for ${jobData.domain}:`, err));
+            if (company.enrichment_status === 'pending') {
+                // Trigger automatic enrichment in background
+                console.log(`[Workflow] Triggering automatic enrichment for ${jobData.domain}`);
+                this.enrichCompany(folderId, jobData.domain, jobData.company)
+                    .catch(err => console.error(`[Workflow] Enrichment failed for ${jobData.domain}:`, err));
+            } else if (company.enrichment_status === 'failed') {
+                // Retry failed enrichment
+                console.log(`[Workflow] Retrying failed enrichment for ${jobData.domain}`);
+                this.enrichCompany(folderId, jobData.domain, jobData.company)
+                    .catch(err => console.error(`[Workflow] Retry enrichment failed for ${jobData.domain}:`, err));
+            }
         }
 
         return job;
