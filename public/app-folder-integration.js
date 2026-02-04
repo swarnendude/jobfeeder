@@ -5,6 +5,14 @@
 async function loadJobFolders() {
     try {
         const response = await fetch('/api/folders');
+
+        // Check if API endpoint exists (404 = endpoint not found, using SQLite)
+        if (response.status === 404) {
+            console.log('[Folder Integration] Folder API not available. Using localStorage fallback.');
+            loadJobFoldersLocal();
+            return;
+        }
+
         if (!response.ok) {
             console.error('Failed to load folders from API');
             // Fallback to localStorage
@@ -50,6 +58,7 @@ async function loadJobFolders() {
 
 // Original localStorage implementation as fallback
 function loadJobFoldersLocal() {
+    const JOB_FOLDERS_KEY = 'jobfeeder_job_folders'; // Define locally to avoid conflicts
     const stored = localStorage.getItem(JOB_FOLDERS_KEY);
     if (stored) {
         try {

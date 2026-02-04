@@ -1,10 +1,25 @@
 // Migration Script: Sync localStorage folders to PostgreSQL
 // This runs automatically on page load to migrate existing folders
 
+(function() {
+    'use strict';
+
 const MIGRATION_KEY = 'jobfeeder_folders_migrated';
 const JOB_FOLDERS_KEY = 'jobfeeder_job_folders';
 
 async function migrateLocalStorageFolders() {
+    // Check if API endpoint exists (only available with PostgreSQL server)
+    try {
+        const testResponse = await fetch('/api/folders');
+        if (!testResponse.ok && testResponse.status === 404) {
+            console.log('[Migration] Folder API not available (using SQLite server). Migration skipped.');
+            return { migrated: false, reason: 'api_not_available' };
+        }
+    } catch (e) {
+        console.log('[Migration] Could not reach folder API. Migration skipped.');
+        return { migrated: false, reason: 'api_error' };
+    }
+
     // Check if migration already done
     if (localStorage.getItem(MIGRATION_KEY) === 'true') {
         console.log('[Migration] Folders already migrated to PostgreSQL');
@@ -218,3 +233,5 @@ window.resetFolderMigration = resetMigration;
 
 console.log('[Migration] Folder migration script loaded');
 console.log('[Migration] Run window.resetFolderMigration() to force re-migration (for testing)');
+
+})(); // End of IIFE
