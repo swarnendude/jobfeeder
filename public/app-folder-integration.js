@@ -51,26 +51,12 @@ async function loadJobFolders() {
         console.log(`Loaded ${jobFolders.length} folders from API`);
     } catch (error) {
         console.error('Error loading folders from API:', error);
-        // Fallback to localStorage
-        loadJobFoldersLocal();
+        showError('Failed to load folders. Please check your database connection.');
+        jobFolders = [];
     }
 }
 
-// Original localStorage implementation as fallback
-function loadJobFoldersLocal() {
-    const JOB_FOLDERS_KEY = 'jobfeeder_job_folders'; // Define locally to avoid conflicts
-    const stored = localStorage.getItem(JOB_FOLDERS_KEY);
-    if (stored) {
-        try {
-            jobFolders = JSON.parse(stored);
-        } catch (e) {
-            console.error('Failed to parse stored folders:', e);
-            jobFolders = [];
-        }
-    }
-    renderFolders();
-    updateTotalJobsCount();
-}
+// Removed localStorage fallback - PostgreSQL only
 
 // Create folder using API
 async function createNewFolderAPI() {
@@ -101,9 +87,7 @@ async function createNewFolderAPI() {
         showSuccessMessage('Folder created successfully!');
     } catch (error) {
         console.error('Error creating folder:', error);
-        showError('Failed to create folder via API. Using local storage as fallback.');
-        // Fallback to local implementation
-        createNewFolder();
+        showError('Failed to create folder. Please check your database connection.');
     }
 }
 
@@ -160,11 +144,8 @@ async function addJobToFolderAPI(index, folderId) {
         }
     } catch (error) {
         console.error('Error adding job to folder:', error);
-        showError('Failed to add job via API. Using local storage as fallback.');
-        // Fallback to local implementation - use original function
-        if (typeof window._originalAddJobToFolder === 'function') {
-            window._originalAddJobToFolder(index, folderId);
-        }
+        showError('Failed to add job to folder. Please check your database connection.');
+        closeModal();
     }
 }
 
@@ -242,11 +223,8 @@ async function quickCreateFolderAPI(jobIndex) {
 
     } catch (error) {
         console.error('Error creating folder:', error);
-        showError('Failed to create folder via API. Using local storage as fallback.');
-        // Fallback to local implementation
-        if (window._originalQuickCreateFolder) {
-            window._originalQuickCreateFolder(jobIndex);
-        }
+        showError('Failed to create folder. Please check your database connection.');
+        closeModal();
     }
 }
 
