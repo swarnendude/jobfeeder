@@ -736,6 +736,62 @@ app.get('/api/companies/:domain/prospects', async (req, res) => {
     }
 });
 
+// Bulk prospect all companies in a folder
+app.post('/api/folders/:id/prospect-all', async (req, res) => {
+    if (!prospectingService || !db) {
+        return res.status(503).json({ error: 'Services not initialized' });
+    }
+
+    const { id: folderId } = req.params;
+
+    try {
+        console.log(`[Server] Starting bulk prospecting for folder ${folderId}`);
+
+        // Get all enriched companies in the folder
+        const folder = await db.getFolder(folderId);
+        if (!folder) {
+            return res.status(404).json({ error: 'Folder not found' });
+        }
+
+        const companies = await db.getCompaniesByFolder(folderId);
+        const enrichedCompanies = companies.filter(c => c.enrichment_status === 'completed');
+
+        if (enrichedCompanies.length === 0) {
+            return res.status(400).json({ error: 'No enriched companies to prospect' });
+        }
+
+        // Start prospecting for each company (run in background)
+        const results = {
+            total: enrichedCompanies.length,
+            started: 0,
+            errors: []
+        };
+
+        // Process companies sequentially to avoid overwhelming APIs
+        for (const company of enrichedCompanies) {
+            try {
+                await prospectingService.startProspecting(company.domain);
+                results.started++;
+            } catch (error) {
+                console.error(`[Server] Failed to prospect ${company.domain}:`, error.message);
+                results.errors.push({
+                    domain: company.domain,
+                    error: error.message
+                });
+            }
+        }
+
+        res.json({
+            success: true,
+            message: `Started prospecting for ${results.started}/${results.total} companies`,
+            ...results
+        });
+    } catch (error) {
+        console.error('Error in bulk prospecting:', error);
+        res.status(500).json({ error: error.message || 'Failed to start bulk prospecting' });
+    }
+});
+
 // Catch-all for SPA
 app.get('*', (req, res) => {
     res.sendFile(join(__dirname, 'public', 'index.html'));

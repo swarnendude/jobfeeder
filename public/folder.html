@@ -309,6 +309,25 @@
             transform: translateY(-1px);
         }
 
+        .btn-prospect-all {
+            padding: 8px 16px;
+            background: #16a34a;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .btn-prospect-all:hover {
+            background: #15803d;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(22, 163, 74, 0.3);
+        }
+
         .btn-retry-small {
             padding: 6px 12px;
             background: #f59e0b;
@@ -1170,11 +1189,18 @@
                             <span class="stat-label">Failed</span>
                         </div>
                     </div>
-                    ${stats.failed > 0 ? `
-                        <button class="btn-retry-failed" onclick="retryAllFailed()">
-                            🔄 Retry All Failed (${stats.failed})
-                        </button>
-                    ` : ''}
+                    <div style="display: flex; gap: 10px;">
+                        ${stats.completed > 0 ? `
+                            <button class="btn-prospect-all" onclick="prospectAllCompanies()">
+                                🎯 Prospect All (${stats.completed})
+                            </button>
+                        ` : ''}
+                        ${stats.failed > 0 ? `
+                            <button class="btn-retry-failed" onclick="retryAllFailed()">
+                                🔄 Retry All Failed (${stats.failed})
+                            </button>
+                        ` : ''}
+                    </div>
                 </div>
                 <div class="companies-layout">
                     <div class="company-list-container">
@@ -1703,6 +1729,43 @@
             } catch (error) {
                 console.error('Failed to retry all failed:', error);
                 showNotification('Failed to restart enrichment: ' + error.message, 'error');
+            }
+        }
+
+        async function prospectAllCompanies() {
+            const enrichedCompanies = folderCompanies.filter(c => c.enrichment_status === 'completed');
+
+            if (enrichedCompanies.length === 0) {
+                showNotification('No enriched companies to prospect.', 'info');
+                return;
+            }
+
+            const confirmed = await showConfirmation(
+                `This will start prospecting for ${enrichedCompanies.length} enriched ${enrichedCompanies.length === 1 ? 'company' : 'companies'}. This may take a few minutes. Continue?`,
+                'Prospect All Companies'
+            );
+            if (!confirmed) return;
+
+            try {
+                const response = await fetch(`/api/folders/${folderId}/prospect-all`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) throw new Error('Failed to start bulk prospecting');
+
+                const data = await response.json();
+
+                showNotification(
+                    `${data.message}. Check individual companies for prospect results.`,
+                    'success',
+                    'Bulk Prospecting Started'
+                );
+
+                // Reload to show updated prospect counts
+                setTimeout(() => loadFolderDetails(), 2000);
+            } catch (error) {
+                console.error('Failed to prospect all companies:', error);
+                showNotification('Failed to start bulk prospecting: ' + error.message, 'error');
             }
         }
 

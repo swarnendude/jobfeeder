@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
+import axios from 'axios';
 
-const SIGNALHIRE_SEARCH_URL = 'https://www.signalhire.com/api/v1/search';
+const SIGNALHIRE_SEARCH_URL = 'https://www.signalhire.com/api/v1/search/people';
 
 /**
  * Prospecting service for finding and analyzing potential contacts
@@ -125,23 +126,17 @@ export class ProspectingService {
         try {
             console.log(`[Prospecting] SignalHire search:`, searchParams);
 
-            const response = await fetch(SIGNALHIRE_SEARCH_URL, {
-                method: 'POST',
+            const response = await axios.post(SIGNALHIRE_SEARCH_URL, searchParams, {
                 headers: {
                     'apikey': this.signalHireApiKey,
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'
                 },
-                body: JSON.stringify(searchParams)
+                timeout: 15000,
+                validateStatus: (status) => status >= 200 && status < 300
             });
 
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error(`[Prospecting] SignalHire API error: ${response.status} - ${errorText}`);
-                return [];
-            }
-
-            const data = await response.json();
+            const data = response.data;
 
             if (data.items && data.items.length > 0) {
                 return data.items.map(item => ({
@@ -158,7 +153,11 @@ export class ProspectingService {
 
             return [];
         } catch (error) {
-            console.error('[Prospecting] SignalHire search error:', error);
+            if (error.response) {
+                console.error(`[Prospecting] SignalHire API error: ${error.response.status} - ${error.response.data}`);
+            } else {
+                console.error('[Prospecting] SignalHire search error:', error.message);
+            }
             return [];
         }
     }
