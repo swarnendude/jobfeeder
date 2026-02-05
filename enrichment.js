@@ -1,4 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import axios from 'axios';
+import * as cheerio from 'cheerio';
 
 const RETRY_CONFIG = {
     maxAttempts: 3,
@@ -24,20 +26,13 @@ export class CompanyEnricher {
         this.signalHireApiKey = signalHireApiKey || process.env.SIGNALHIRE_API_KEY;
         this.processingQueue = new Set();
 
-        // Initialize Gemini if API key is provided
-        const geminiKey = geminiApiKey || process.env.GEMINI_API_KEY;
-        if (geminiKey) {
-            this.gemini = new GoogleGenerativeAI(geminiKey);
-            this.geminiModel = this.gemini.getGenerativeModel({ model: 'gemini-2.0-flash' });
-            console.log('[Enrichment] Gemini initialized - will use for content structuring');
+        if (!this.anthropic) {
+            console.warn('[Enrichment] WARNING: No Claude API key configured. Company enrichment will not work.');
         } else {
-            this.gemini = null;
-            this.geminiModel = null;
+            console.log('[Enrichment] Company enricher initialized');
+            console.log('[Enrichment] Scraping: Axios + Cheerio (fast HTML parsing)');
+            console.log('[Enrichment] Structuring: Claude 3.5 Haiku (fast & cost-effective)');
         }
-
-        // Determine which AI to use for enrichment
-        this.useGemini = !!this.geminiModel;
-        console.log(`[Enrichment] Using ${this.useGemini ? 'Gemini' : 'Claude'} for company enrichment`);
     }
 
     async enrich(domain, companyName) {
@@ -59,13 +54,28 @@ export class CompanyEnricher {
             const websiteContent = await this.fetchWebsiteContent(domain);
 
             if (Object.keys(websiteContent).length === 0) {
-                console.log(`[Enrichment] No content fetched for ${domain}, using fallback`);
-                // Create minimal enriched data from existing info
+                console.log(`[Enrichment] No content fetched for ${domain}, trying SignalHire fallback`);
+
+                // Try SignalHire as fallback
+                if (this.signalHireApiKey) {
+                    const signalHireData = await this.fetchFromSignalHire(domain, companyName);
+
+                    if (signalHireData) {
+                        console.log(`[Enrichment] ✓ Got company data from SignalHire for ${domain}`);
+                        const enrichedData = this.parseSignalHireCompanyData(signalHireData, domain, companyName);
+                        this.db.saveEnrichedData(domain, enrichedData);
+                        return { status: 'completed', data: enrichedData, source: 'signalhire' };
+                    }
+                }
+
+                // Final fallback: minimal data
+                console.log(`[Enrichment] No data available from web or SignalHire for ${domain}`);
                 const enrichedData = {
-                    company_summary: `Unable to fetch website content for ${companyName}. Company information is based on job listing data only.`,
+                    company_summary: `Unable to fetch website content for ${companyName}. Company may have anti-scraping protection (Cloudflare). Company information is based on job listing data only.`,
                     pages_scraped: [],
                     scrape_timestamp: new Date().toISOString(),
-                    fetch_failed: true
+                    fetch_failed: true,
+                    cloudflare_blocked: true
                 };
                 this.db.saveEnrichedData(domain, enrichedData);
                 return { status: 'completed', data: enrichedData, partial: true };
@@ -144,102 +154,232 @@ export class CompanyEnricher {
     }
 
     async fetchWebsiteContent(domain) {
+        console.log(`[Enrichment] Starting web scraping for ${domain}`);
+
+        // Prioritize key pages only - homepage and about page
         const pagesToFetch = [
             `https://${domain}`,
-            `https://${domain}/about`,
-            `https://${domain}/about-us`,
-            `https://${domain}/company`,
-            `https://${domain}/team`,
-            `https://${domain}/careers`,
-            `https://${domain}/jobs`,
             `https://www.${domain}`,
-            `https://www.${domain}/about`
+            `https://${domain}/about`,
+            `https://www.${domain}/about`,
+            `https://${domain}/about-us`,
+            `https://${domain}/company`
         ];
 
         const results = {};
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 30000); // 30s total timeout
 
-        for (const url of pagesToFetch) {
+        // Fetch all URLs in parallel using axios with proper timeout
+        const fetchPromises = pagesToFetch.map(async (url) => {
             try {
-                const response = await fetch(url, {
+                const response = await axios.get(url, {
                     headers: {
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                        'Accept-Language': 'en-US,en;q=0.5',
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                        'Accept-Language': 'en-US,en;q=0.9',
                     },
-                    signal: controller.signal,
-                    redirect: 'follow'
+                    timeout: 10000, // 10 second timeout per request
+                    maxRedirects: 5,
+                    validateStatus: (status) => status === 200 // Only accept 200 OK
                 });
 
-                if (response.ok) {
-                    const html = await response.text();
-                    const text = this.extractTextFromHtml(html);
+                if (response.data) {
+                    // Check for Cloudflare or bot protection
+                    const html = response.data;
+                    const isBlocked = this.isBlockedByProtection(html);
 
-                    if (text.length > 100) { // Only save if we got meaningful content
-                        results[url] = {
-                            status: response.status,
-                            text: text.substring(0, 30000) // Limit content size
-                        };
-                        console.log(`[Enrichment] Fetched ${url}: ${text.length} chars`);
+                    if (isBlocked) {
+                        console.log(`[Enrichment] ✗ Bot protection detected on ${url} (Cloudflare/similar)`);
+                        return; // Skip this URL
+                    }
+
+                    const extractedData = this.extractTextWithCheerio(html, url);
+
+                    if (extractedData.text.length > 100) { // Only save if we got meaningful content
+                        results[url] = extractedData;
+                        console.log(`[Enrichment] ✓ Scraped ${url}: ${extractedData.text.length} chars, ${extractedData.headings.length} headings`);
                     }
                 }
             } catch (error) {
                 // Skip failed URLs silently - this is expected for many pages
-                if (error.name !== 'AbortError') {
-                    // console.log(`[Enrichment] Failed to fetch ${url}: ${error.message}`);
+                if (error.code === 'ECONNABORTED') {
+                    console.log(`[Enrichment] ✗ Timeout: ${url}`);
                 }
+                // Silently skip other errors
             }
-        }
+        });
 
-        clearTimeout(timeout);
+        // Wait for all fetches to complete with a global timeout
+        await Promise.race([
+            Promise.allSettled(fetchPromises),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Global timeout')), 15000))
+        ]).catch(() => {
+            console.log(`[Enrichment] Global timeout reached for ${domain}`);
+        });
+
+        console.log(`[Enrichment] Scraping complete for ${domain}: ${Object.keys(results).length} pages fetched`);
         return results;
     }
 
-    extractTextFromHtml(html) {
-        // Remove scripts, styles, and other non-content elements
-        let text = html
-            // Remove script tags and content
-            .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ' ')
-            // Remove style tags and content
-            .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, ' ')
-            // Remove SVG tags and content
-            .replace(/<svg\b[^<]*(?:(?!<\/svg>)<[^<]*)*<\/svg>/gi, ' ')
-            // Remove nav elements
-            .replace(/<nav\b[^<]*(?:(?!<\/nav>)<[^<]*)*<\/nav>/gi, ' ')
-            // Remove footer elements
-            .replace(/<footer\b[^<]*(?:(?!<\/footer>)<[^<]*)*<\/footer>/gi, ' ')
-            // Remove header elements (but keep content headers h1-h6)
-            .replace(/<header\b[^<]*(?:(?!<\/header>)<[^<]*)*<\/header>/gi, ' ')
-            // Remove noscript
-            .replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, ' ')
-            // Remove HTML comments
-            .replace(/<!--[\s\S]*?-->/g, ' ')
-            // Convert br, p, div, li to newlines for better structure
-            .replace(/<br\s*\/?>/gi, '\n')
-            .replace(/<\/?(p|div|li|h[1-6]|tr|section|article)[^>]*>/gi, '\n')
-            // Remove all remaining HTML tags
-            .replace(/<[^>]+>/g, ' ')
-            // Decode common HTML entities
-            .replace(/&nbsp;/g, ' ')
-            .replace(/&amp;/g, '&')
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&quot;/g, '"')
-            .replace(/&#39;/g, "'")
-            .replace(/&[a-z]+;/gi, ' ')
-            // Clean up whitespace
-            .replace(/\s+/g, ' ')
-            .replace(/\n\s*\n/g, '\n')
-            .trim();
+    isBlockedByProtection(html) {
+        // Check for common bot protection indicators
+        const blockingIndicators = [
+            /cloudflare/i,
+            /cf-ray/i,
+            /challenge-platform/i,
+            /captcha/i,
+            /bot protection/i,
+            /access denied/i,
+            /ddos-guard/i,
+            /perimeterx/i,
+            /datadome/i,
+            /just a moment/i,
+            /checking your browser/i,
+            /security check/i
+        ];
 
-        return text;
+        return blockingIndicators.some(pattern => pattern.test(html));
     }
 
-    // Build the extraction prompt (shared between Gemini and Claude)
+    extractTextWithCheerio(html, url) {
+        const $ = cheerio.load(html);
+
+        // Remove unwanted elements
+        $('script, style, noscript, iframe, svg, nav, footer, header[role="banner"]').remove();
+
+        // Extract metadata
+        const title = $('title').text().trim();
+        const metaDescription = $('meta[name="description"]').attr('content') || '';
+
+        // Extract headings for structure
+        const headings = [];
+        $('h1, h2, h3').each((_, elem) => {
+            const text = $(elem).text().trim();
+            if (text && text.length < 200) {
+                headings.push(text);
+            }
+        });
+
+        // Extract main content
+        // Priority: main tag, article tag, or body
+        let mainContent = $('main, article, [role="main"]').first();
+        if (mainContent.length === 0) {
+            mainContent = $('body');
+        }
+
+        // Get text content with structure preserved
+        let text = mainContent
+            .find('p, li, h1, h2, h3, h4, span, div')
+            .map((_, elem) => $(elem).text().trim())
+            .get()
+            .filter(text => text.length > 20 && text.length < 1000) // Filter out too short/long
+            .join('\n')
+            .replace(/\s+/g, ' ') // Normalize whitespace
+            .replace(/\n\s*\n/g, '\n') // Remove multiple newlines
+            .trim();
+
+        // If we didn't get much content, fall back to body text
+        if (text.length < 500) {
+            text = $('body').text()
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        // Limit content size
+        text = text.substring(0, 30000);
+
+        return {
+            url: url,
+            title: title,
+            metaDescription: metaDescription,
+            headings: headings.slice(0, 10), // Top 10 headings
+            text: text
+        };
+    }
+
+    // === SignalHire Fallback Methods ===
+
+    async fetchFromSignalHire(domain, companyName) {
+        if (!this.signalHireApiKey) {
+            return null;
+        }
+
+        try {
+            console.log(`[Enrichment] Fetching company data from SignalHire for ${companyName}`);
+
+            const response = await axios.post('https://www.signalhire.com/api/v1/search/companies', {
+                name: companyName,
+                domain: domain,
+                limit: 1
+            }, {
+                headers: {
+                    'apikey': this.signalHireApiKey,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                timeout: 10000
+            });
+
+            if (response.data && response.data.items && response.data.items.length > 0) {
+                return response.data.items[0];
+            }
+
+            return null;
+        } catch (error) {
+            console.error(`[Enrichment] SignalHire API error for ${domain}:`, error.message);
+            return null;
+        }
+    }
+
+    parseSignalHireCompanyData(signalHireData, domain, companyName) {
+        const data = signalHireData;
+
+        // Extract company information from SignalHire response
+        const enrichedData = {
+            company_summary: data.description || `${companyName} - Company data sourced from SignalHire.`,
+            company_name: data.name || companyName,
+            domain: domain,
+
+            // Company details
+            industry: data.industry || null,
+            employee_count: data.size || data.employeeCount || null,
+            location: data.location || data.headquarters || null,
+            founded_year: data.foundedYear || null,
+
+            // Social/Web presence
+            linkedin_url: data.linkedinUrl || data.linkedin || null,
+            twitter_url: data.twitterUrl || data.twitter || null,
+            facebook_url: data.facebookUrl || data.facebook || null,
+
+            // Additional metadata
+            technologies: data.technologies || [],
+            specialties: data.specialties || [],
+
+            // Data source metadata
+            data_source: 'signalhire',
+            scrape_timestamp: new Date().toISOString(),
+            pages_scraped: [],
+            signalhire_data: data,
+
+            // Note about data source
+            note: 'Company data sourced from SignalHire due to website scraping protection (Cloudflare or similar).'
+        };
+
+        return enrichedData;
+    }
+
+    // Build the extraction prompt for Claude (using scraped data)
     buildExtractionPrompt(domain, companyName, websiteContent) {
         const contentSummary = Object.entries(websiteContent)
-            .map(([url, data]) => `=== ${url} ===\n${data.text}`)
+            .map(([url, data]) => {
+                let summary = `=== ${url} ===\n`;
+                if (data.title) summary += `Title: ${data.title}\n`;
+                if (data.metaDescription) summary += `Meta: ${data.metaDescription}\n`;
+                if (data.headings && data.headings.length > 0) {
+                    summary += `Headings: ${data.headings.join(' | ')}\n`;
+                }
+                summary += `\nContent:\n${data.text}`;
+                return summary;
+            })
             .join('\n\n');
 
         // Truncate if too long (Gemini has larger context, but let's be consistent)
@@ -315,26 +455,77 @@ SPECIAL FOCUS ON TARGET CONTACTS:
 Return ONLY the JSON object, no additional text or markdown formatting.`;
     }
 
-    // Wrapper method that chooses between Gemini and Claude
-    async extractWithAI(domain, companyName, websiteContent) {
-        if (this.useGemini && this.geminiModel) {
-            return await this.extractWithGemini(domain, companyName, websiteContent);
-        } else if (this.anthropic) {
-            return await this.extractWithClaude(domain, companyName, websiteContent);
-        } else {
-            throw new Error('No AI provider configured (need either GEMINI_API_KEY or ANTHROPIC_API_KEY)');
+    // Rotate to next Gemini API key
+    rotateGeminiKey() {
+        if (this.geminiKeys.length <= 1) {
+            console.log('[Enrichment] No other Gemini API keys to rotate to');
+            return false;
         }
+
+        this.currentGeminiKeyIndex = (this.currentGeminiKeyIndex + 1) % this.geminiKeys.length;
+        const newKey = this.geminiKeys[this.currentGeminiKeyIndex];
+
+        console.log(`[Enrichment] Rotating to Gemini API key ${this.currentGeminiKeyIndex + 1}/${this.geminiKeys.length}`);
+
+        this.gemini = new GoogleGenerativeAI(newKey);
+        this.geminiModel = this.gemini.getGenerativeModel({ model: 'gemini-2.0-flash' });
+
+        return true;
     }
 
-    // Extract using Google Gemini
+    // Use Claude Haiku for structuring scraped data (faster and cheaper)
+    async extractWithAI(domain, companyName, websiteContent) {
+        if (!this.anthropic) {
+            throw new Error('Claude API key required for company enrichment');
+        }
+
+        console.log(`[Enrichment] Using Claude Haiku to structure scraped data for ${domain}`);
+        return await this.extractWithClaude(domain, companyName, websiteContent);
+    }
+
+    // Extract using Google Gemini (with key rotation on failure)
     async extractWithGemini(domain, companyName, websiteContent) {
         const prompt = this.buildExtractionPrompt(domain, companyName, websiteContent);
 
-        const result = await this.geminiModel.generateContent(prompt);
-        const response = await result.response;
-        const responseText = response.text();
+        let lastError = null;
+        const maxKeyAttempts = this.geminiKeys.length;
 
-        return this.parseAIResponse(responseText, websiteContent);
+        for (let attempt = 0; attempt < maxKeyAttempts; attempt++) {
+            try {
+                const result = await this.geminiModel.generateContent(prompt);
+                const response = await result.response;
+                const responseText = response.text();
+
+                return this.parseAIResponse(responseText, websiteContent);
+            } catch (error) {
+                lastError = error;
+
+                // Check error type
+                const isInvalidKeyError = error.message?.includes('API key') ||
+                                        error.message?.includes('API_KEY_INVALID') ||
+                                        error.status === 400;
+
+                const isQuotaError = error.status === 429 ||
+                                   error.message?.includes('quota') ||
+                                   error.message?.includes('Too Many Requests');
+
+                // Rotate on invalid key or quota error
+                if ((isInvalidKeyError || isQuotaError) && attempt < maxKeyAttempts - 1) {
+                    const errorType = isQuotaError ? 'quota exceeded' : 'invalid key';
+                    console.log(`[Enrichment] Gemini ${errorType}, rotating to next key (attempt ${attempt + 1}/${maxKeyAttempts})`);
+                    this.rotateGeminiKey();
+                } else {
+                    // Not a recoverable error or no more keys to try
+                    if (isQuotaError && attempt === maxKeyAttempts - 1) {
+                        console.log(`[Enrichment] All ${maxKeyAttempts} Gemini API keys have exceeded quota`);
+                    }
+                    break;
+                }
+            }
+        }
+
+        // All keys failed, throw the last error
+        throw lastError;
     }
 
     // Extract using Anthropic Claude
@@ -342,7 +533,7 @@ Return ONLY the JSON object, no additional text or markdown formatting.`;
         const prompt = this.buildExtractionPrompt(domain, companyName, websiteContent);
 
         const response = await this.anthropic.messages.create({
-            model: 'claude-sonnet-4-20250514',
+            model: 'claude-3-5-haiku-20241022', // Use Haiku - faster and cheaper for structuring
             max_tokens: 4096,
             messages: [{
                 role: 'user',
@@ -354,7 +545,7 @@ Return ONLY the JSON object, no additional text or markdown formatting.`;
         return this.parseAIResponse(responseText, websiteContent);
     }
 
-    // Parse AI response (shared between Gemini and Claude)
+    // Parse Claude response
     parseAIResponse(responseText, websiteContent) {
         // Parse JSON from response
         try {
@@ -366,13 +557,16 @@ Return ONLY the JSON object, no additional text or markdown formatting.`;
             }
 
             const enrichedData = JSON.parse(jsonStr);
+
+            // Add metadata about scraping
             enrichedData.pages_scraped = Object.keys(websiteContent);
             enrichedData.scrape_timestamp = new Date().toISOString();
-            enrichedData.ai_provider = this.useGemini ? 'gemini' : 'claude';
+            enrichedData.ai_provider = 'claude-haiku';
+            enrichedData.scraping_method = 'cheerio';
 
             return enrichedData;
         } catch (parseError) {
-            console.error('[Enrichment] Failed to parse AI response:', parseError.message);
+            console.error('[Enrichment] Failed to parse Claude response:', parseError.message);
             console.error('[Enrichment] Response was:', responseText.substring(0, 500));
             throw new Error(`Failed to parse AI response: ${parseError.message}`);
         }

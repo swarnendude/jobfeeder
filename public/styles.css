@@ -1838,6 +1838,28 @@ body.companies-page {
     cursor: pointer;
 }
 
+.btn-retry-failed {
+    padding: 0.6rem 1rem;
+    background: var(--warning-color);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.btn-retry-failed:hover:not(:disabled) {
+    background: var(--error-color);
+    transform: translateY(-1px);
+}
+
+.btn-retry-failed:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 .companies-list {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));

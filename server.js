@@ -6,6 +6,7 @@ import { dirname, join } from 'path';
 import { initializePostgresDatabase } from './db-postgres.js';
 import { CompanyEnricher } from './enrichment.js';
 import { WorkflowManager } from './workflow-manager.js';
+import { ProspectingService } from './prospecting.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -13,10 +14,11 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Database, enricher, and workflow manager (initialized async)
+// Database, enricher, workflow manager, and prospecting service (initialized async)
 let db = null;
 let enricher = null;
 let workflowManager = null;
+let prospectingService = null;
 
 // Middleware
 app.use(express.json());
@@ -645,6 +647,95 @@ app.get('/api/companies/:domain', async (req, res) => {
     }
 });
 
+// Retry enrichment for a single company
+app.post('/api/companies/:domain/retry', async (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not initialized' });
+    }
+
+    const { domain } = req.params;
+
+    try {
+        const company = await db.getCompany(domain);
+        if (!company) {
+            return res.status(404).json({ error: 'Company not found' });
+        }
+
+        await db.resetForRetry(domain);
+        console.log(`[Server] Reset enrichment status for ${domain} to retry`);
+
+        res.json({ success: true, message: 'Company enrichment reset for retry' });
+    } catch (error) {
+        console.error('Error retrying enrichment:', error);
+        res.status(500).json({ error: 'Failed to retry enrichment' });
+    }
+});
+
+// Bulk retry all failed companies
+app.post('/api/companies/bulk/retry-failed', async (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not initialized' });
+    }
+
+    try {
+        const resetCompanies = await db.resetAllFailed();
+        console.log(`[Server] Reset ${resetCompanies.length} failed companies for retry`);
+
+        res.json({
+            success: true,
+            count: resetCompanies.length,
+            message: `${resetCompanies.length} failed companies reset for retry`
+        });
+    } catch (error) {
+        console.error('Error bulk retrying enrichment:', error);
+        res.status(500).json({ error: 'Failed to bulk retry enrichment' });
+    }
+});
+
+// Start prospecting for a company
+app.post('/api/companies/:domain/prospect', async (req, res) => {
+    if (!prospectingService) {
+        return res.status(503).json({ error: 'Prospecting service not initialized' });
+    }
+
+    const { domain } = req.params;
+
+    try {
+        console.log(`[Server] Starting prospecting for ${domain}`);
+        const result = await prospectingService.startProspecting(domain);
+
+        res.json({
+            success: true,
+            ...result
+        });
+    } catch (error) {
+        console.error('Error starting prospecting:', error);
+        res.status(500).json({ error: error.message || 'Failed to start prospecting' });
+    }
+});
+
+// Get prospects for a company
+app.get('/api/companies/:domain/prospects', async (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not initialized' });
+    }
+
+    const { domain } = req.params;
+
+    try {
+        const company = await db.getCompany(domain);
+        if (!company) {
+            return res.status(404).json({ error: 'Company not found' });
+        }
+
+        const prospects = await db.getProspectsByCompany(company.id);
+        res.json({ prospects });
+    } catch (error) {
+        console.error('Error fetching prospects:', error);
+        res.status(500).json({ error: 'Failed to fetch prospects' });
+    }
+});
+
 // Catch-all for SPA
 app.get('*', (req, res) => {
     res.sendFile(join(__dirname, 'public', 'index.html'));
@@ -683,6 +774,16 @@ async function startServer() {
                 geminiApiKey: GEMINI_API_KEY
             });
             console.log('Workflow manager initialized');
+        }
+
+        // Initialize prospecting service
+        if (anthropic || SIGNALHIRE_API_KEY) {
+            prospectingService = new ProspectingService({
+                anthropicClient: anthropic,
+                signalHireApiKey: SIGNALHIRE_API_KEY,
+                db: db
+            });
+            console.log('Prospecting service initialized');
         }
 
         // Start server

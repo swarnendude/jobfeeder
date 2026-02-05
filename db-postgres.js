@@ -500,6 +500,18 @@ export class PostgresDatabase {
         `, [domain]);
     }
 
+    async resetAllFailed() {
+        const result = await pool.query(`
+            UPDATE companies
+            SET enrichment_status = 'pending',
+                enrichment_error = NULL,
+                updated_at = NOW()
+            WHERE enrichment_status = 'failed'
+            RETURNING domain
+        `);
+        return result.rows;
+    }
+
     async getPendingCompanies(limit = 10) {
         const result = await pool.query(`
             SELECT * FROM companies

@@ -8,6 +8,7 @@
     <style>
         .folder-detail-container {
             max-width: 1400px;
+            min-width: 800px;
             margin: 0 auto;
             padding: 20px;
         }
@@ -154,6 +155,19 @@
         }
 
         /* Company list */
+        .companies-layout {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 20px;
+            height: calc(100vh - 350px);
+            min-height: 500px;
+        }
+
+        .company-list-container {
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+
         .company-list {
             display: flex;
             flex-direction: column;
@@ -165,10 +179,18 @@
             border: 1px solid #e2e8f0;
             border-radius: 8px;
             padding: 16px;
+            cursor: pointer;
+            transition: all 0.2s;
         }
 
         .company-item:hover {
-            border-color: #cbd5e1;
+            border-color: #3b82f6;
+            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+        }
+
+        .company-item.selected {
+            border-color: #3b82f6;
+            background: #eff6ff;
         }
 
         .company-header {
@@ -225,6 +247,263 @@
             padding: 4px 10px;
             border-radius: 12px;
             font-size: 12px;
+        }
+
+        .companies-header-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .companies-stats {
+            display: flex;
+            gap: 30px;
+        }
+
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 600;
+            color: #1e293b;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 4px;
+        }
+
+        .company-status-section {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .btn-retry-failed {
+            padding: 8px 16px;
+            background: #f59e0b;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .btn-retry-failed:hover {
+            background: #dc2626;
+            transform: translateY(-1px);
+        }
+
+        .btn-retry-small {
+            padding: 6px 12px;
+            background: #f59e0b;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(245, 158, 11, 0.2);
+        }
+
+        .btn-retry-small:hover {
+            background: #dc2626;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(220, 38, 38, 0.3);
+        }
+
+        .btn-retry-small:active {
+            transform: translateY(0);
+        }
+
+        .btn-reenrich-icon {
+            background: none;
+            border: none;
+            font-size: 16px;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: all 0.2s;
+            opacity: 0.6;
+        }
+
+        .btn-reenrich-icon:hover {
+            opacity: 1;
+            background: #f1f5f9;
+            transform: rotate(180deg);
+        }
+
+        .btn-reenrich-icon:active {
+            transform: rotate(180deg) scale(0.9);
+        }
+
+        .company-status-section {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        /* Company Detail Panel */
+        .company-detail-panel {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            overflow-y: auto;
+            position: sticky;
+            top: 0;
+            max-height: calc(100vh - 350px);
+        }
+
+        .company-detail-panel.empty {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #94a3b8;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .company-detail-header {
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .company-detail-header h2 {
+            font-size: 20px;
+            margin-bottom: 8px;
+            color: #1e293b;
+        }
+
+        .company-detail-domain {
+            color: #2563eb;
+            font-size: 14px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .company-detail-domain:hover {
+            text-decoration: underline;
+        }
+
+        .detail-section {
+            margin-bottom: 20px;
+        }
+
+        .detail-section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 10px;
+        }
+
+        .detail-content {
+            color: #475569;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 12px;
+        }
+
+        .detail-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .detail-label {
+            font-size: 12px;
+            color: #64748b;
+            font-weight: 500;
+        }
+
+        .detail-value {
+            font-size: 14px;
+            color: #1e293b;
+        }
+
+        .detail-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .detail-tag {
+            background: #f1f5f9;
+            color: #475569;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+        }
+
+        .detail-contacts {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .contact-item {
+            padding: 10px;
+            border-radius: 6px;
+            background: #f8fafc;
+            margin-bottom: 8px;
+        }
+
+        .contact-name {
+            font-weight: 600;
+            font-size: 14px;
+            color: #1e293b;
+        }
+
+        .contact-title {
+            font-size: 12px;
+            color: #64748b;
+            margin-top: 2px;
+        }
+
+        .contact-linkedin {
+            font-size: 12px;
+            color: #2563eb;
+            margin-top: 4px;
+        }
+
+        .close-detail-btn {
+            float: right;
+            background: none;
+            border: none;
+            font-size: 24px;
+            color: #94a3b8;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .close-detail-btn:hover {
+            color: #64748b;
         }
 
         /* Prospects section */
@@ -326,10 +605,23 @@
         .btn-success {
             background: #16a34a;
             color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
         }
 
         .btn-success:hover {
             background: #15803d;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(22, 163, 74, 0.3);
+        }
+
+        .btn-success:active {
+            transform: translateY(0);
         }
 
         .btn-info {
@@ -362,6 +654,190 @@
         .btn-sm {
             padding: 4px 10px;
             font-size: 12px;
+        }
+
+        /* Responsive layout for companies */
+        @media (max-width: 1200px) {
+            .companies-layout {
+                grid-template-columns: 1fr 350px;
+            }
+        }
+
+        @media (max-width: 968px) {
+            .companies-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .company-detail-panel {
+                display: none;
+            }
+
+            .company-detail-panel:not(.empty) {
+                display: block;
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                z-index: 1000;
+                max-height: 100vh;
+                border-radius: 0;
+                margin: 0;
+            }
+
+            .close-detail-btn {
+                display: block;
+            }
+        }
+
+        /* Notification System */
+        .notification-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: 400px;
+        }
+
+        .notification {
+            background: white;
+            border-radius: 8px;
+            padding: 16px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            animation: slideIn 0.3s ease-out;
+            border-left: 4px solid #3b82f6;
+        }
+
+        .notification.success {
+            border-left-color: #10b981;
+        }
+
+        .notification.error {
+            border-left-color: #ef4444;
+        }
+
+        .notification.warning {
+            border-left-color: #f59e0b;
+        }
+
+        .notification.info {
+            border-left-color: #3b82f6;
+        }
+
+        .notification-icon {
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+
+        .notification-content {
+            flex: 1;
+        }
+
+        .notification-title {
+            font-weight: 600;
+            margin-bottom: 4px;
+            color: #1e293b;
+        }
+
+        .notification-message {
+            font-size: 14px;
+            color: #64748b;
+            line-height: 1.5;
+        }
+
+        .notification-close {
+            background: none;
+            border: none;
+            font-size: 20px;
+            color: #94a3b8;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+
+        .notification-close:hover {
+            color: #64748b;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+        }
+
+        .notification.hiding {
+            animation: slideOut 0.3s ease-out forwards;
+        }
+
+        /* Confirmation Dialog */
+        .confirmation-dialog {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10001;
+        }
+
+        .confirmation-content {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 400px;
+            width: 90%;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+        }
+
+        .confirmation-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #1e293b;
+        }
+
+        .confirmation-message {
+            font-size: 14px;
+            color: #64748b;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+
+        .confirmation-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .confirmation-buttons .btn {
+            padding: 8px 16px;
+            font-size: 14px;
         }
     </style>
 </head>
@@ -410,6 +886,9 @@
         </div>
     </div>
 
+    <!-- Notification Container -->
+    <div id="notificationContainer" class="notification-container"></div>
+
     <script>
         let currentFolder = null;
         let folderJobs = [];
@@ -422,6 +901,82 @@
 
         if (!folderId) {
             window.location.href = '/folders.html';
+        }
+
+        // Notification System
+        function showNotification(message, type = 'info', title = null) {
+            const container = document.getElementById('notificationContainer');
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+
+            const icons = {
+                success: '✅',
+                error: '❌',
+                warning: '⚠️',
+                info: 'ℹ️'
+            };
+
+            const titles = {
+                success: title || 'Success',
+                error: title || 'Error',
+                warning: title || 'Warning',
+                info: title || 'Info'
+            };
+
+            notification.innerHTML = `
+                <span class="notification-icon">${icons[type]}</span>
+                <div class="notification-content">
+                    <div class="notification-title">${titles[type]}</div>
+                    <div class="notification-message">${escapeHtml(message)}</div>
+                </div>
+                <button class="notification-close" onclick="closeNotification(this)">×</button>
+            `;
+
+            container.appendChild(notification);
+
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                closeNotification(notification.querySelector('.notification-close'));
+            }, 5000);
+        }
+
+        function closeNotification(button) {
+            const notification = button.closest ? button.closest('.notification') : button.parentElement;
+            if (!notification) return;
+
+            notification.classList.add('hiding');
+            setTimeout(() => {
+                notification.remove();
+            }, 300);
+        }
+
+        // Confirmation Dialog
+        function showConfirmation(message, title = 'Confirm') {
+            return new Promise((resolve) => {
+                const dialog = document.createElement('div');
+                dialog.className = 'confirmation-dialog';
+                dialog.innerHTML = `
+                    <div class="confirmation-content">
+                        <div class="confirmation-title">${escapeHtml(title)}</div>
+                        <div class="confirmation-message">${escapeHtml(message)}</div>
+                        <div class="confirmation-buttons">
+                            <button class="btn btn-secondary" onclick="this.closest('.confirmation-dialog').remove(); window.confirmationResolve(false);">Cancel</button>
+                            <button class="btn btn-primary" onclick="this.closest('.confirmation-dialog').remove(); window.confirmationResolve(true);">Confirm</button>
+                        </div>
+                    </div>
+                `;
+
+                window.confirmationResolve = resolve;
+                document.body.appendChild(dialog);
+
+                // Close on background click
+                dialog.addEventListener('click', (e) => {
+                    if (e.target === dialog) {
+                        dialog.remove();
+                        resolve(false);
+                    }
+                });
+            });
         }
 
         // Initialize
@@ -587,44 +1142,388 @@
                 return;
             }
 
+            // Calculate stats
+            const stats = {
+                total: folderCompanies.length,
+                completed: folderCompanies.filter(c => c.enrichment_status === 'completed').length,
+                processing: folderCompanies.filter(c => c.enrichment_status === 'processing' || c.enrichment_status === 'pending').length,
+                failed: folderCompanies.filter(c => c.enrichment_status === 'failed').length
+            };
+
             container.innerHTML = `
-                <div class="company-list">
-                    ${folderCompanies.map(company => {
-                        const enriched = company.enriched_data || {};
-                        const theirstack = company.theirstack_data || {};
-                        const statusClass = company.enrichment_status || 'pending';
-                        const statusLabel = {
-                            'completed': 'Enriched',
-                            'pending': 'Pending',
-                            'processing': 'Processing',
-                            'failed': 'Failed'
-                        }[statusClass] || statusClass;
+                <div class="companies-header-section">
+                    <div class="companies-stats">
+                        <div class="stat-item">
+                            <span class="stat-value">${stats.total}</span>
+                            <span class="stat-label">Total</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value">${stats.completed}</span>
+                            <span class="stat-label">Enriched</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value">${stats.processing}</span>
+                            <span class="stat-label">Processing</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value">${stats.failed}</span>
+                            <span class="stat-label">Failed</span>
+                        </div>
+                    </div>
+                    ${stats.failed > 0 ? `
+                        <button class="btn-retry-failed" onclick="retryAllFailed()">
+                            🔄 Retry All Failed (${stats.failed})
+                        </button>
+                    ` : ''}
+                </div>
+                <div class="companies-layout">
+                    <div class="company-list-container">
+                        <div class="company-list">
+                            ${folderCompanies.map(company => {
+                                const enriched = company.enriched_data || {};
+                                const theirstack = company.theirstack_data || {};
+                                const statusClass = company.enrichment_status || 'pending';
+                                const statusLabel = {
+                                    'completed': 'Enriched',
+                                    'pending': 'Pending',
+                                    'processing': 'Processing',
+                                    'failed': 'Failed'
+                                }[statusClass] || statusClass;
 
-                        let tags = [];
-                        if (theirstack.industry) tags.push(theirstack.industry);
-                        if (theirstack.employee_count) tags.push(formatEmployeeCount(theirstack.employee_count) + ' employees');
-                        if (theirstack.funding_stage) tags.push(theirstack.funding_stage);
+                                let tags = [];
+                                if (theirstack.industry) tags.push(theirstack.industry);
+                                if (theirstack.employee_count) tags.push(formatEmployeeCount(theirstack.employee_count) + ' employees');
+                                if (theirstack.funding_stage) tags.push(theirstack.funding_stage);
 
-                        return `
-                            <div class="company-item">
-                                <div class="company-header">
-                                    <div class="company-info">
-                                        <h3>${escapeHtml(company.name)}</h3>
-                                        <a href="https://${escapeHtml(company.domain)}" target="_blank" class="domain">${escapeHtml(company.domain)}</a>
+                                return `
+                                    <div class="company-item" onclick="showCompanyDetail('${escapeHtml(company.domain)}')" data-domain="${escapeHtml(company.domain)}">
+                                        <div class="company-header">
+                                            <div class="company-info">
+                                                <h3>${escapeHtml(company.name)}</h3>
+                                                <a href="https://${escapeHtml(company.domain)}" target="_blank" class="domain" onclick="event.stopPropagation()">${escapeHtml(company.domain)}</a>
+                                            </div>
+                                            <div class="company-status-section">
+                                                <span class="company-status ${statusClass}">${statusLabel}</span>
+                                                <button class="btn-reenrich-icon" onclick="event.stopPropagation(); retryEnrichment('${escapeHtml(company.domain)}')" title="Re-enrich company data">
+                                                    🔄
+                                                </button>
+                                            </div>
+                                        </div>
+                                        ${enriched.company_summary ? `<p class="company-summary">${escapeHtml(enriched.company_summary).substring(0, 150)}${enriched.company_summary.length > 150 ? '...' : ''}</p>` : ''}
+                                        ${tags.length > 0 ? `
+                                            <div class="company-tags">
+                                                ${tags.slice(0, 3).map(tag => `<span class="company-tag">${escapeHtml(tag)}</span>`).join('')}
+                                                ${tags.length > 3 ? `<span class="company-tag">+${tags.length - 3} more</span>` : ''}
+                                            </div>
+                                        ` : ''}
                                     </div>
-                                    <span class="company-status ${statusClass}">${statusLabel}</span>
-                                </div>
-                                ${enriched.company_summary ? `<p class="company-summary">${escapeHtml(enriched.company_summary)}</p>` : ''}
-                                ${tags.length > 0 ? `
-                                    <div class="company-tags">
-                                        ${tags.map(tag => `<span class="company-tag">${escapeHtml(tag)}</span>`).join('')}
-                                    </div>
-                                ` : ''}
-                            </div>
-                        `;
-                    }).join('')}
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                    <div class="company-detail-panel empty" id="companyDetailPanel">
+                        <div>👈 Select a company to view details</div>
+                    </div>
                 </div>
             `;
+        }
+
+        function showCompanyDetail(domain) {
+            const company = folderCompanies.find(c => c.domain === domain);
+            if (!company) return;
+
+            // Highlight selected company
+            document.querySelectorAll('.company-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            const selectedItem = document.querySelector(`.company-item[data-domain="${domain}"]`);
+            if (selectedItem) selectedItem.classList.add('selected');
+
+            const panel = document.getElementById('companyDetailPanel');
+            if (!panel) return;
+
+            panel.classList.remove('empty');
+
+            const enriched = company.enriched_data || {};
+            const theirstack = company.theirstack_data || {};
+            const statusClass = company.enrichment_status || 'pending';
+            const statusLabel = {
+                'completed': 'Enriched',
+                'pending': 'Pending',
+                'processing': 'Processing',
+                'failed': 'Failed'
+            }[statusClass] || statusClass;
+
+            let html = `
+                <button class="close-detail-btn" onclick="closeCompanyDetail()">×</button>
+                <div class="company-detail-header">
+                    <h2>${escapeHtml(company.name)}</h2>
+                    <a href="https://${escapeHtml(company.domain)}" target="_blank" class="company-detail-domain">
+                        ${escapeHtml(company.domain)} →
+                    </a>
+                    <div style="margin-top: 10px; display: flex; gap: 10px; align-items: center;">
+                        <span class="company-status ${statusClass}">${statusLabel}</span>
+                        ${statusClass === 'failed' ? `
+                            <button class="btn-retry-small" onclick="retryEnrichment('${escapeHtml(company.domain)}')" style="margin-left: auto;">
+                                🔄 Retry
+                            </button>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+
+            // Basic company info from Theirstack
+            if (theirstack && Object.keys(theirstack).length > 0) {
+                html += `<div class="detail-section">
+                    <div class="detail-section-title">Company Information</div>
+                    <div class="detail-grid">`;
+
+                if (theirstack.industry) {
+                    html += `<div class="detail-item">
+                        <div class="detail-label">Industry</div>
+                        <div class="detail-value">${escapeHtml(theirstack.industry)}</div>
+                    </div>`;
+                }
+
+                if (theirstack.employee_count) {
+                    html += `<div class="detail-item">
+                        <div class="detail-label">Company Size</div>
+                        <div class="detail-value">${formatEmployeeCount(theirstack.employee_count)} employees</div>
+                    </div>`;
+                }
+
+                if (theirstack.funding_stage) {
+                    html += `<div class="detail-item">
+                        <div class="detail-label">Funding Stage</div>
+                        <div class="detail-value">${escapeHtml(theirstack.funding_stage)}</div>
+                    </div>`;
+                }
+
+                if (theirstack.location) {
+                    html += `<div class="detail-item">
+                        <div class="detail-label">Location</div>
+                        <div class="detail-value">${escapeHtml(theirstack.location)}</div>
+                    </div>`;
+                }
+
+                html += `</div></div>`;
+            }
+
+            // Enriched data
+            if (enriched && Object.keys(enriched).length > 0) {
+                if (enriched.company_summary) {
+                    html += `<div class="detail-section">
+                        <div class="detail-section-title">Summary</div>
+                        <div class="detail-content">${escapeHtml(enriched.company_summary)}</div>
+                    </div>`;
+                }
+
+                if (enriched.target_contacts && enriched.target_contacts.length > 0) {
+                    html += `<div class="detail-section">
+                        <div class="detail-section-title">Key Contacts (${enriched.target_contacts.length})</div>
+                        <div class="detail-contacts">`;
+                    enriched.target_contacts.forEach(contact => {
+                        html += `<div class="contact-item">
+                            <div class="contact-name">${escapeHtml(contact.name || 'Unknown')}</div>
+                            ${contact.title ? `<div class="contact-title">${escapeHtml(contact.title)}</div>` : ''}
+                            ${contact.linkedin_url ? `<a href="${escapeHtml(contact.linkedin_url)}" target="_blank" class="contact-linkedin">LinkedIn Profile →</a>` : ''}
+                        </div>`;
+                    });
+                    html += `</div></div>`;
+                }
+
+                if (enriched.technologies && enriched.technologies.length > 0) {
+                    html += `<div class="detail-section">
+                        <div class="detail-section-title">Technologies</div>
+                        <div class="detail-tags">`;
+                    enriched.technologies.forEach(tech => {
+                        html += `<span class="detail-tag">${escapeHtml(tech)}</span>`;
+                    });
+                    html += `</div></div>`;
+                }
+
+                if (enriched.growth_signals && enriched.growth_signals.length > 0) {
+                    html += `<div class="detail-section">
+                        <div class="detail-section-title">Growth Signals</div>
+                        <ul class="detail-content" style="margin: 0; padding-left: 20px;">`;
+                    enriched.growth_signals.forEach(signal => {
+                        html += `<li>${escapeHtml(signal)}</li>`;
+                    });
+                    html += `</ul></div>`;
+                }
+
+                if (enriched.red_flags && enriched.red_flags.length > 0) {
+                    html += `<div class="detail-section">
+                        <div class="detail-section-title">Red Flags</div>
+                        <ul class="detail-content" style="margin: 0; padding-left: 20px; color: #dc2626;">`;
+                    enriched.red_flags.forEach(flag => {
+                        html += `<li>${escapeHtml(flag)}</li>`;
+                    });
+                    html += `</ul></div>`;
+                }
+
+                if (enriched.scrape_timestamp) {
+                    html += `<div class="detail-section">
+                        <div class="detail-section-title">Last Updated</div>
+                        <div class="detail-content">${new Date(enriched.scrape_timestamp).toLocaleDateString()}</div>
+                    </div>`;
+                }
+            } else if (statusClass === 'pending' || statusClass === 'processing') {
+                html += `<div class="detail-section">
+                    <div class="detail-content" style="color: #64748b; text-align: center; padding: 40px 20px;">
+                        <div style="font-size: 40px; margin-bottom: 10px;">⏳</div>
+                        <div>Company enrichment in progress...</div>
+                        <div style="font-size: 12px; margin-top: 8px;">Check back in a few minutes</div>
+                    </div>
+                </div>`;
+            } else if (statusClass === 'failed') {
+                html += `<div class="detail-section">
+                    <div class="detail-content" style="color: #dc2626; text-align: center; padding: 40px 20px;">
+                        <div style="font-size: 40px; margin-bottom: 10px;">❌</div>
+                        <div>Enrichment failed</div>
+                        <button class="btn btn-primary" onclick="retryEnrichment('${escapeHtml(company.domain)}')" style="margin-top: 15px;">Retry Enrichment</button>
+                    </div>
+                </div>`;
+            }
+
+            panel.innerHTML = html;
+
+            // Load and display prospects for completed companies only
+            // (Don't show prospecting while company is still being enriched)
+            if (statusClass === 'completed' || statusClass === 'failed') {
+                loadCompanyProspects(company.domain);
+            }
+        }
+
+        async function loadCompanyProspects(domain) {
+            try {
+                const response = await fetch(`/api/companies/${encodeURIComponent(domain)}/prospects`);
+
+                let prospects = [];
+                if (response.ok) {
+                    const data = await response.json();
+                    prospects = data.prospects || [];
+                }
+
+                // Always display the prospecting section, even if API fails or returns empty
+                displayCompanyProspects(domain, prospects);
+            } catch (error) {
+                console.error('Error loading prospects:', error);
+                // Still display the section with empty prospects (shows Start Prospecting button)
+                displayCompanyProspects(domain, []);
+            }
+        }
+
+        function displayCompanyProspects(domain, prospects) {
+            const panel = document.getElementById('companyDetailPanel');
+            if (!panel) return;
+
+            // Add prospecting section
+            let prospectsHtml = '<div class="detail-section">';
+            prospectsHtml += '<div class="detail-section-title">Prospecting</div>';
+
+            if (prospects.length === 0) {
+                prospectsHtml += `
+                    <div class="detail-content" style="text-align: center; padding: 20px;">
+                        <button class="btn btn-success" onclick="startProspecting('${escapeHtml(domain)}')" id="startProspectingBtn">
+                            🎯 Start Prospecting
+                        </button>
+                        <p style="font-size: 12px; color: #64748b; margin-top: 8px;">
+                            Find and analyze top decision makers
+                        </p>
+                    </div>
+                `;
+            } else {
+                prospectsHtml += `
+                    <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                        <div style="font-size: 12px; color: #64748b;">${prospects.length} prospect${prospects.length > 1 ? 's' : ''} found</div>
+                        <button class="btn btn-sm btn-secondary" onclick="startProspecting('${escapeHtml(domain)}')" id="refreshProspectingBtn">
+                            🔄 Refresh
+                        </button>
+                    </div>
+                    <div class="detail-contacts" id="companyProspects">
+                `;
+
+                prospects.forEach(prospect => {
+                    const priorityColors = {
+                        high: '#dc2626',
+                        medium: '#f59e0b',
+                        low: '#64748b'
+                    };
+                    const priorityColor = priorityColors[prospect.priority] || '#64748b';
+
+                    prospectsHtml += `
+                        <div class="contact-item" style="border-left: 3px solid ${priorityColor};">
+                            <div style="display: flex; justify-content: space-between; align-items: start;">
+                                <div class="contact-name">${escapeHtml(prospect.name)}</div>
+                                ${prospect.ai_score ? `<span style="font-size: 11px; color: #10b981;">${Math.round(prospect.ai_score * 100)}% match</span>` : ''}
+                            </div>
+                            ${prospect.title ? `<div class="contact-title">${escapeHtml(prospect.title)}</div>` : ''}
+                            ${prospect.location ? `<div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">📍 ${escapeHtml(prospect.location)}</div>` : ''}
+                            ${prospect.relevance ? `<div style="font-size: 12px; color: #64748b; margin-top: 6px; font-style: italic;">${escapeHtml(prospect.relevance)}</div>` : ''}
+                            ${prospect.linkedin_url ? `<a href="${escapeHtml(prospect.linkedin_url)}" target="_blank" class="contact-linkedin">LinkedIn Profile →</a>` : ''}
+                        </div>
+                    `;
+                });
+
+                prospectsHtml += '</div>';
+            }
+
+            prospectsHtml += '</div>';
+
+            // Append to panel
+            panel.innerHTML += prospectsHtml;
+        }
+
+        async function startProspecting(domain) {
+            const btn = document.getElementById('startProspectingBtn') || document.getElementById('refreshProspectingBtn');
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = '⏳ Prospecting...';
+            }
+
+            try {
+                const response = await fetch(`/api/companies/${encodeURIComponent(domain)}/prospect`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to start prospecting');
+                }
+
+                const data = await response.json();
+
+                showNotification(
+                    `${data.message}. Found ${data.total_found} prospects, selected top ${data.prospects.length}.`,
+                    'success',
+                    'Prospecting Complete'
+                );
+
+                // Reload company details to show prospects
+                showCompanyDetail(domain);
+            } catch (error) {
+                console.error('Error starting prospecting:', error);
+                showNotification('Failed to start prospecting: ' + error.message, 'error');
+
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = btn.id === 'startProspectingBtn' ? '🎯 Start Prospecting' : '🔄 Refresh';
+                }
+            }
+        }
+
+        function closeCompanyDetail() {
+            const panel = document.getElementById('companyDetailPanel');
+            if (!panel) return;
+
+            panel.classList.add('empty');
+            panel.innerHTML = '<div>👈 Select a company to view details</div>';
+
+            // Remove selection
+            document.querySelectorAll('.company-item').forEach(item => {
+                item.classList.remove('selected');
+            });
         }
 
         function renderProspects() {
@@ -686,7 +1585,8 @@
         }
 
         async function removeJob(jobId) {
-            if (!confirm('Remove this job from the folder?')) return;
+            const confirmed = await showConfirmation('Remove this job from the folder?', 'Remove Job');
+            if (!confirmed) return;
 
             try {
                 const response = await fetch(`/api/folders/${folderId}/jobs/${jobId}`, {
@@ -695,16 +1595,21 @@
 
                 if (!response.ok) throw new Error('Failed to remove job');
 
+                showNotification('Job removed from folder', 'success');
                 // Reload
                 loadFolderDetails();
             } catch (error) {
                 console.error('Error removing job:', error);
-                alert('Failed to remove job: ' + error.message);
+                showNotification('Failed to remove job: ' + error.message, 'error');
             }
         }
 
         async function deleteFolder() {
-            if (!confirm(`Delete folder "${currentFolder.name}"? This cannot be undone.`)) return;
+            const confirmed = await showConfirmation(
+                `Delete folder "${currentFolder.name}"? This cannot be undone.`,
+                'Delete Folder'
+            );
+            if (!confirmed) return;
 
             try {
                 const response = await fetch(`/api/folders/${folderId}`, {
@@ -713,10 +1618,91 @@
 
                 if (!response.ok) throw new Error('Failed to delete folder');
 
-                window.location.href = '/folders.html';
+                showNotification('Folder deleted successfully', 'success');
+                setTimeout(() => {
+                    window.location.href = '/folders.html';
+                }, 1000);
             } catch (error) {
                 console.error('Error deleting folder:', error);
-                alert('Failed to delete folder: ' + error.message);
+                showNotification('Failed to delete folder: ' + error.message, 'error');
+            }
+        }
+
+        async function retryEnrichment(domain) {
+            try {
+                // Get current company to determine message
+                const company = folderCompanies.find(c => c.domain === domain);
+                const isFailed = company?.enrichment_status === 'failed';
+                const isCompleted = company?.enrichment_status === 'completed';
+
+                const response = await fetch(`/api/companies/${encodeURIComponent(domain)}/retry`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) throw new Error('Failed to retry enrichment');
+
+                // Update the company status in the local array
+                if (company) {
+                    company.enrichment_status = 'pending';
+                    // Clear old enriched data to show it's being re-enriched
+                    if (isCompleted) {
+                        company.enriched_data = null;
+                    }
+                    renderCompanies();
+                }
+
+                // Show appropriate message
+                if (isFailed) {
+                    showNotification('Retrying failed enrichment. Check back in ~10 seconds.', 'success', 'Retry Started');
+                } else if (isCompleted) {
+                    showNotification('Re-enriching company data. Fresh data will be available in ~10 seconds.', 'info', 'Re-enrichment Started');
+                } else {
+                    showNotification('Enrichment queued. Results will be available in ~10 seconds.', 'success', 'Enrichment Started');
+                }
+            } catch (error) {
+                console.error('Failed to retry enrichment:', error);
+                showNotification('Failed to start enrichment: ' + error.message, 'error');
+            }
+        }
+
+        async function retryAllFailed() {
+            const failedCompanies = folderCompanies.filter(c => c.enrichment_status === 'failed');
+
+            if (failedCompanies.length === 0) {
+                showNotification('No failed companies to retry.', 'info');
+                return;
+            }
+
+            const confirmed = await showConfirmation(
+                `This will restart enrichment for ${failedCompanies.length} failed ${failedCompanies.length === 1 ? 'company' : 'companies'}. Continue?`,
+                'Retry Failed Companies'
+            );
+            if (!confirmed) return;
+
+            try {
+                const response = await fetch('/api/companies/bulk/retry-failed', {
+                    method: 'POST'
+                });
+
+                if (!response.ok) throw new Error('Failed to retry all failed companies');
+
+                const data = await response.json();
+
+                // Update all failed companies to pending status
+                folderCompanies.forEach(company => {
+                    if (company.enrichment_status === 'failed') {
+                        company.enrichment_status = 'pending';
+                    }
+                });
+
+                renderCompanies();
+                showNotification(
+                    `Successfully restarted enrichment for ${data.count} ${data.count === 1 ? 'company' : 'companies'}. Refresh in a few minutes to see results.`,
+                    'success'
+                );
+            } catch (error) {
+                console.error('Failed to retry all failed:', error);
+                showNotification('Failed to restart enrichment: ' + error.message, 'error');
             }
         }
 
@@ -728,11 +1714,11 @@
 
                 if (!response.ok) throw new Error('Failed to start prospect collection');
 
-                alert('Prospect collection started. This may take a few minutes.');
+                showNotification('Prospect collection started. This may take a few minutes.', 'info', 'Collecting Prospects');
                 loadFolderDetails();
             } catch (error) {
                 console.error('Error collecting prospects:', error);
-                alert('Failed to collect prospects: ' + error.message);
+                showNotification('Failed to collect prospects: ' + error.message, 'error');
             }
         }
 
@@ -744,10 +1730,11 @@
 
                 if (!response.ok) throw new Error('Failed to auto-select prospects');
 
+                showNotification('Prospects auto-selected successfully', 'success');
                 loadFolderDetails();
             } catch (error) {
                 console.error('Error auto-selecting prospects:', error);
-                alert('Failed to auto-select prospects: ' + error.message);
+                showNotification('Failed to auto-select prospects: ' + error.message, 'error');
             }
         }
 
@@ -759,11 +1746,11 @@
 
                 if (!response.ok) throw new Error('Failed to start contact enrichment');
 
-                alert('Contact enrichment started. This may take a few minutes.');
+                showNotification('Contact enrichment started. This may take a few minutes.', 'info', 'Enriching Contacts');
                 loadFolderDetails();
             } catch (error) {
                 console.error('Error enriching contacts:', error);
-                alert('Failed to enrich contacts: ' + error.message);
+                showNotification('Failed to enrich contacts: ' + error.message, 'error');
             }
         }
 
@@ -782,7 +1769,7 @@
         function exportProspects() {
             const enrichedProspects = folderProspects.filter(p => p.email);
             if (enrichedProspects.length === 0) {
-                alert('No prospects with email addresses to export');
+                showNotification('No prospects with email addresses to export', 'warning');
                 return;
             }
 
