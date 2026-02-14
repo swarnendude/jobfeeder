@@ -181,6 +181,18 @@ async function createTables() {
             )
         `);
 
+        // Search history table
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS search_history (
+                id SERIAL PRIMARY KEY,
+                query TEXT NOT NULL,
+                params JSONB NOT NULL,
+                criteria JSONB,
+                results_count INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
         // Create indexes
         await client.query('CREATE INDEX IF NOT EXISTS idx_folders_status ON folders(status)');
         await client.query('CREATE INDEX IF NOT EXISTS idx_jobs_folder ON jobs(folder_id)');
@@ -193,6 +205,7 @@ async function createTables() {
         await client.query('CREATE INDEX IF NOT EXISTS idx_tasks_status ON background_tasks(status)');
         await client.query('CREATE INDEX IF NOT EXISTS idx_tasks_folder ON background_tasks(folder_id)');
         await client.query('CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read)');
+        await client.query('CREATE INDEX IF NOT EXISTS idx_search_history_created ON search_history(created_at DESC)');
 
         await client.query('COMMIT');
         console.log('PostgreSQL tables created successfully');
@@ -789,6 +802,46 @@ export class PostgresDatabase {
             [limit]
         );
         return result.rows;
+    }
+
+    // ===== SEARCH HISTORY METHODS =====
+
+    async saveSearchHistory(query, params, criteria, resultsCount) {
+        // Remove duplicate (same params)
+        await pool.query(
+            'DELETE FROM search_history WHERE params::text = $1::text',
+            [JSON.stringify(params)]
+        );
+
+        const result = await pool.query(
+            'INSERT INTO search_history (query, params, criteria, results_count) VALUES ($1, $2, $3, $4) RETURNING *',
+            [query, JSON.stringify(params), JSON.stringify(criteria), resultsCount]
+        );
+
+        // Keep only last 20 entries
+        await pool.query(`
+            DELETE FROM search_history WHERE id NOT IN (
+                SELECT id FROM search_history ORDER BY created_at DESC LIMIT 20
+            )
+        `);
+
+        return result.rows[0];
+    }
+
+    async getSearchHistory(limit = 20) {
+        const result = await pool.query(
+            'SELECT * FROM search_history ORDER BY created_at DESC LIMIT $1',
+            [limit]
+        );
+        return result.rows;
+    }
+
+    async deleteSearchHistory(id) {
+        await pool.query('DELETE FROM search_history WHERE id = $1', [id]);
+    }
+
+    async clearSearchHistory() {
+        await pool.query('DELETE FROM search_history');
     }
 }
 

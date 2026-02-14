@@ -1,5 +1,5 @@
 // JobFeeder - Frontend Application
-const SEARCH_HISTORY_KEY = 'jobfeeder_search_history';
+// Search history is now stored in the database via /api/search-history
 const JOB_FOLDERS_KEY = 'jobfeeder_job_folders';
 const LAST_FOLDER_KEY = 'jobfeeder_last_folder';
 const MAX_HISTORY_ITEMS = 20;
@@ -35,26 +35,19 @@ const elements = {
     clearHistoryBtn: $('clearHistoryBtn'),
     // Form inputs
     jobTitle: $('jobTitle'),
-    jobSeniority: $('jobSeniority'),
+    employmentType: $('employmentType'),
+    experienceLevel: $('experienceLevel'),
     jobLocation: $('jobLocation'),
     jobCountry: $('jobCountry'),
     remoteOnly: $('remoteOnly'),
-    minEmployees: $('minEmployees'),
-    maxEmployees: $('maxEmployees'),
-    industry: $('industry'),
-    fundingStage: $('fundingStage'),
-    ycOnly: $('ycOnly'),
-    technologies: $('technologies'),
-    excludeCompanies: $('excludeCompanies'),
-    postedDays: $('postedDays'),
-    resultsLimit: $('resultsLimit'),
-    sortBy: $('sortBy')
+    datePosted: $('datePosted'),
+    numPages: $('numPages')
 };
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
     await checkApiStatus();
-    loadSearchHistory();
+    await loadSearchHistory();
     loadJobFolders();
     elements.searchForm.addEventListener('submit', handleSearch);
     elements.resetBtn.addEventListener('click', resetForm);
@@ -74,8 +67,8 @@ async function checkApiStatus() {
 
         elements.apiStatus.innerHTML = `
             <span class="status-item">
-                <span class="status-dot ${data.theirstack ? 'connected' : 'disconnected'}"></span>
-                Theirstack
+                <span class="status-dot ${data.jsearch ? 'connected' : 'disconnected'}"></span>
+                JSearch
             </span>
             <span class="status-item">
                 <span class="status-dot ${data.claude ? 'connected' : 'disconnected'}"></span>
@@ -92,98 +85,52 @@ async function checkApiStatus() {
     }
 }
 
-// Build search parameters
+// Country code to name map for query building
+const COUNTRY_NAMES = {
+    'US': 'USA', 'GB': 'United Kingdom', 'CA': 'Canada', 'DE': 'Germany',
+    'FR': 'France', 'AU': 'Australia', 'NL': 'Netherlands', 'ES': 'Spain',
+    'IT': 'Italy', 'SE': 'Sweden', 'CH': 'Switzerland', 'IE': 'Ireland',
+    'SG': 'Singapore', 'IN': 'India', 'BR': 'Brazil', 'JP': 'Japan',
+    'PL': 'Poland', 'IL': 'Israel'
+};
+
+// Build search parameters for JSearch API
 function buildSearchParams() {
-    const params = {
-        posted_at_max_age_days: parseInt(elements.postedDays.value) || 15,
-        limit: parseInt(elements.resultsLimit.value),
-        page: currentPage,
-        order_by: [{ desc: true, field: elements.sortBy.value }],
-        include_total_results: true,
-        blur_company_data: false
-    };
-
-    // Job title (required)
+    // Build the query string from job title + location + country
     const jobTitle = elements.jobTitle.value.trim();
-    if (jobTitle) {
-        const titles = jobTitle.split(',').map(t => t.trim()).filter(Boolean);
-        if (titles.length > 0) {
-            params.job_title_pattern_or = titles;
-        }
-    }
-
-    // Job seniority
-    const seniorityValues = getSelectedValues(elements.jobSeniority);
-    if (seniorityValues.length > 0) {
-        params.job_seniority_or = seniorityValues;
-    }
-
-    // Job location
     const jobLocation = elements.jobLocation.value.trim();
-    if (jobLocation) {
-        const locations = jobLocation.split(',').map(l => l.trim()).filter(Boolean);
-        if (locations.length > 0) {
-            params.job_location_pattern_or = locations;
-        }
+    const jobCountries = getSelectedValues(elements.jobCountry);
+
+    let queryParts = [];
+    if (jobTitle) queryParts.push(jobTitle);
+    if (jobLocation) queryParts.push('in ' + jobLocation);
+    else if (jobCountries.length > 0) {
+        const countryNames = jobCountries.map(c => COUNTRY_NAMES[c] || c);
+        queryParts.push('in ' + countryNames.join(', '));
     }
 
-    // Job country
-    const jobCountries = getSelectedValues(elements.jobCountry);
-    if (jobCountries.length > 0) {
-        params.job_country_code_or = jobCountries;
-    }
+    const params = {
+        query: queryParts.join(' '),
+        page: currentPage + 1,  // JSearch is 1-indexed
+        num_pages: parseInt(elements.numPages.value) || 1,
+        date_posted: elements.datePosted.value || 'all'
+    };
 
     // Remote only
     if (elements.remoteOnly.checked) {
-        params.remote = true;
+        params.remote_jobs_only = true;
     }
 
-    // Employee count
-    const minEmployees = parseInt(elements.minEmployees.value);
-    const maxEmployees = parseInt(elements.maxEmployees.value);
-    if (!isNaN(minEmployees) && minEmployees > 0) {
-        params.min_employee_count = minEmployees;
-    }
-    if (!isNaN(maxEmployees) && maxEmployees > 0) {
-        params.max_employee_count = maxEmployees;
+    // Employment type
+    const employmentTypes = getSelectedValues(elements.employmentType);
+    if (employmentTypes.length > 0) {
+        params.employment_types = employmentTypes.join(',');
     }
 
-    // Industry
-    const industry = elements.industry.value.trim();
-    if (industry) {
-        const industries = industry.split(',').map(i => i.trim()).filter(Boolean);
-        if (industries.length > 0) {
-            params.industry_or = industries;
-        }
-    }
-
-    // Funding stage
-    const fundingStages = getSelectedValues(elements.fundingStage);
-    if (fundingStages.length > 0) {
-        params.funding_stage_or = fundingStages;
-    }
-
-    // Y Combinator only
-    if (elements.ycOnly.checked) {
-        params.only_yc_companies = true;
-    }
-
-    // Technologies
-    const technologies = elements.technologies.value.trim();
-    if (technologies) {
-        const techList = technologies.split(',').map(t => t.trim().toLowerCase().replace(/\s+/g, '-')).filter(Boolean);
-        if (techList.length > 0) {
-            params.company_technology_slug_or = techList;
-        }
-    }
-
-    // Exclude companies
-    const excludeCompanies = elements.excludeCompanies.value.trim();
-    if (excludeCompanies) {
-        const excludeList = excludeCompanies.split(',').map(c => c.trim()).filter(Boolean);
-        if (excludeList.length > 0) {
-            params.company_name_not = excludeList;
-        }
+    // Experience level / job requirements
+    const experienceLevels = getSelectedValues(elements.experienceLevel);
+    if (experienceLevels.length > 0) {
+        params.job_requirements = experienceLevels.join(',');
     }
 
     return params;
@@ -230,17 +177,18 @@ async function performSearch() {
             throw new Error(data.error || `API error: ${response.status}`);
         }
 
-        totalResults = data.total || data.metadata?.total_results || 0;
         jobsCache = data.data || [];
+        totalResults = data.total || jobsCache.length;
         const isCached = data._cached;
         const cacheAge = data._cacheAge;
-        console.log(`Got ${jobsCache.length} jobs out of ${totalResults} total${isCached ? ` (cached: ${cacheAge})` : ''}`);
+        const hasMore = data._hasMore || false;
+        console.log(`Got ${jobsCache.length} jobs${isCached ? ` (cached: ${cacheAge})` : ''}${hasMore ? ' (more available)' : ''}`);
         displayResults(jobsCache, isCached, cacheAge);
-        updatePagination();
+        updatePagination(hasMore);
 
-        // Save to history on first page only
-        if (currentSearchParams.page === 0) {
-            saveSearchToHistory(currentSearchParams, totalResults);
+        // Save to history on first page only (JSearch is 1-indexed)
+        if (currentSearchParams.page <= 1) {
+            await saveSearchToHistory(currentSearchParams, totalResults);
         }
 
     } catch (error) {
@@ -302,6 +250,9 @@ function createJobCard(job, index) {
     }
     if (job.salary_string) {
         metaTags += `<span class="meta-tag salary">${escapeHtml(job.salary_string)}</span>`;
+    }
+    if (job.job_type) {
+        metaTags += `<span class="meta-tag type">${escapeHtml(formatEmploymentType(job.job_type))}</span>`;
     }
     if (company.employee_count) {
         metaTags += `<span class="meta-tag employees">${formatEmployeeCount(company.employee_count)}</span>`;
@@ -448,19 +399,17 @@ function closeModal() {
 }
 
 // Update pagination controls
-function updatePagination() {
-    const limit = parseInt(elements.resultsLimit.value);
-    const totalPages = Math.ceil(totalResults / limit);
-
-    if (totalPages <= 1) {
+function updatePagination(hasMore = false) {
+    // JSearch doesn't provide total count, so we use simple prev/next with hasMore
+    if (currentPage === 0 && !hasMore) {
         elements.pagination.innerHTML = '';
         return;
     }
 
     elements.pagination.innerHTML = `
         <button onclick="goToPage(${currentPage - 1})" ${currentPage === 0 ? 'disabled' : ''}>Previous</button>
-        <span class="page-info">Page ${currentPage + 1} of ${totalPages}</span>
-        <button onclick="goToPage(${currentPage + 1})" ${currentPage >= totalPages - 1 ? 'disabled' : ''}>Next</button>
+        <span class="page-info">Page ${currentPage + 1}</span>
+        <button onclick="goToPage(${currentPage + 1})" ${!hasMore ? 'disabled' : ''}>Next</button>
     `;
 }
 
@@ -482,49 +431,51 @@ function resetForm() {
     jobsCache = [];
 }
 
-// Search History Functions
-function loadSearchHistory() {
+// Search History Functions (database-backed)
+async function loadSearchHistory() {
     try {
-        const stored = localStorage.getItem(SEARCH_HISTORY_KEY);
-        searchHistory = stored ? JSON.parse(stored) : [];
+        const response = await fetch('/api/search-history');
+        if (response.ok) {
+            const data = await response.json();
+            // Map DB rows to the format renderSearchHistory expects
+            searchHistory = data.map(row => ({
+                id: row.id,
+                timestamp: row.created_at,
+                params: row.params,
+                resultsCount: row.results_count || 0,
+                criteria: row.criteria || { title: row.query, tags: [] }
+            }));
+        } else {
+            searchHistory = [];
+        }
         renderSearchHistory();
     } catch (e) {
         console.error('Failed to load search history:', e);
         searchHistory = [];
+        renderSearchHistory();
     }
 }
 
-function saveSearchToHistory(params, resultsCount) {
-    const historyItem = {
-        id: Date.now(),
-        timestamp: new Date().toISOString(),
-        params: { ...params },
-        resultsCount: resultsCount,
-        criteria: buildCriteriaSummary(params)
-    };
+async function saveSearchToHistory(params, resultsCount) {
+    const criteria = buildCriteriaSummary(params);
 
-    // Remove duplicate searches (same job title and key criteria)
-    searchHistory = searchHistory.filter(item =>
-        item.criteria.title !== historyItem.criteria.title ||
-        JSON.stringify(item.params) !== JSON.stringify(historyItem.params)
-    );
-
-    // Add to beginning
-    searchHistory.unshift(historyItem);
-
-    // Keep only last MAX_HISTORY_ITEMS
-    if (searchHistory.length > MAX_HISTORY_ITEMS) {
-        searchHistory = searchHistory.slice(0, MAX_HISTORY_ITEMS);
-    }
-
-    // Save to localStorage
     try {
-        localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(searchHistory));
+        await fetch('/api/search-history', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                query: params.query || criteria.title || 'Search',
+                params: params,
+                criteria: criteria,
+                results_count: resultsCount
+            })
+        });
+
+        // Reload from DB to get the updated list
+        await loadSearchHistory();
     } catch (e) {
         console.error('Failed to save search history:', e);
     }
-
-    renderSearchHistory();
 }
 
 function buildCriteriaSummary(params) {
@@ -533,56 +484,56 @@ function buildCriteriaSummary(params) {
         tags: []
     };
 
-    // Job title
-    if (params.job_title_pattern_or) {
-        criteria.title = params.job_title_pattern_or.join(', ');
-    }
-
-    // Location
-    if (params.job_location_pattern_or) {
-        criteria.tags.push(params.job_location_pattern_or.join(', '));
-    }
-
-    // Country
-    if (params.job_country_code_or) {
-        criteria.tags.push(params.job_country_code_or.join(', '));
+    // Query (contains job title + location)
+    if (params.query) {
+        criteria.title = params.query;
     }
 
     // Remote
-    if (params.remote) {
+    if (params.remote_jobs_only) {
         criteria.tags.push('Remote');
     }
 
-    // Seniority
-    if (params.job_seniority_or) {
-        criteria.tags.push(params.job_seniority_or.map(s => formatSeniority(s)).join(', '));
+    // Employment type
+    if (params.employment_types) {
+        criteria.tags.push(params.employment_types.split(',').map(t => formatEmploymentType(t)).join(', '));
     }
 
-    // Industry
-    if (params.industry_or) {
-        criteria.tags.push(params.industry_or.join(', '));
+    // Experience level
+    if (params.job_requirements) {
+        criteria.tags.push(params.job_requirements.split(',').map(r => formatExperienceLevel(r)).join(', '));
     }
 
-    // Employee count
-    if (params.min_employee_count || params.max_employee_count) {
-        const min = params.min_employee_count || '1';
-        const max = params.max_employee_count || '+';
-        criteria.tags.push(`${min}-${max} employees`);
-    }
-
-    // YC only
-    if (params.only_yc_companies) {
-        criteria.tags.push('YC');
-    }
-
-    // Funding
-    if (params.funding_stage_or) {
-        criteria.tags.push(params.funding_stage_or.map(s => formatFundingStage(s)).join(', '));
+    // Date posted
+    if (params.date_posted && params.date_posted !== 'all') {
+        const dateLabels = { today: 'Last 24h', '3days': 'Last 3 days', week: 'Last week', month: 'Last month' };
+        criteria.tags.push(dateLabels[params.date_posted] || params.date_posted);
     }
 
     return criteria;
 }
 
+function formatEmploymentType(type) {
+    const map = {
+        'FULLTIME': 'Full Time',
+        'CONTRACTOR': 'Contractor',
+        'PARTTIME': 'Part Time',
+        'INTERN': 'Intern'
+    };
+    return map[type] || type;
+}
+
+function formatExperienceLevel(level) {
+    const map = {
+        'under_3_years_experience': 'Under 3 Years',
+        'more_than_3_years_experience': '3+ Years',
+        'no_experience': 'No Experience',
+        'no_degree': 'No Degree'
+    };
+    return map[level] || level;
+}
+
+// Legacy formatSeniority kept for compatibility with stored data
 function formatSeniority(seniority) {
     const map = {
         'intern': 'Intern',
@@ -652,7 +603,7 @@ function loadSearchFromHistory(id) {
 
     // Trigger search
     currentPage = 0;
-    currentSearchParams = { ...item.params, page: 0 };
+    currentSearchParams = { ...item.params, page: 1 };
     performSearch();
 }
 
@@ -660,73 +611,32 @@ function restoreFormFromParams(params) {
     // Reset form first
     elements.searchForm.reset();
 
-    // Job title
-    if (params.job_title_pattern_or) {
-        elements.jobTitle.value = params.job_title_pattern_or.join(', ');
-    }
-
-    // Seniority
-    if (params.job_seniority_or) {
-        setSelectedValues(elements.jobSeniority, params.job_seniority_or);
-    }
-
-    // Location
-    if (params.job_location_pattern_or) {
-        elements.jobLocation.value = params.job_location_pattern_or.join(', ');
-    }
-
-    // Country
-    if (params.job_country_code_or) {
-        setSelectedValues(elements.jobCountry, params.job_country_code_or);
+    // Query contains job title + location combined — put it in job title field
+    if (params.query) {
+        elements.jobTitle.value = params.query;
     }
 
     // Remote
-    elements.remoteOnly.checked = !!params.remote;
+    elements.remoteOnly.checked = !!params.remote_jobs_only;
 
-    // Employees
-    if (params.min_employee_count) {
-        elements.minEmployees.value = params.min_employee_count;
-    }
-    if (params.max_employee_count) {
-        elements.maxEmployees.value = params.max_employee_count;
+    // Employment type
+    if (params.employment_types) {
+        setSelectedValues(elements.employmentType, params.employment_types.split(','));
     }
 
-    // Industry
-    if (params.industry_or) {
-        elements.industry.value = params.industry_or.join(', ');
+    // Experience level
+    if (params.job_requirements) {
+        setSelectedValues(elements.experienceLevel, params.job_requirements.split(','));
     }
 
-    // Funding stage
-    if (params.funding_stage_or) {
-        setSelectedValues(elements.fundingStage, params.funding_stage_or);
+    // Date posted
+    if (params.date_posted) {
+        elements.datePosted.value = params.date_posted;
     }
 
-    // YC only
-    elements.ycOnly.checked = !!params.only_yc_companies;
-
-    // Technologies
-    if (params.company_technology_slug_or) {
-        elements.technologies.value = params.company_technology_slug_or.join(', ');
-    }
-
-    // Exclude companies
-    if (params.company_name_not) {
-        elements.excludeCompanies.value = params.company_name_not.join(', ');
-    }
-
-    // Posted days
-    if (params.posted_at_max_age_days) {
-        elements.postedDays.value = params.posted_at_max_age_days;
-    }
-
-    // Results limit
-    if (params.limit) {
-        elements.resultsLimit.value = params.limit;
-    }
-
-    // Sort by
-    if (params.order_by && params.order_by[0]) {
-        elements.sortBy.value = params.order_by[0].field;
+    // Num pages
+    if (params.num_pages) {
+        elements.numPages.value = params.num_pages;
     }
 }
 
@@ -736,26 +646,24 @@ function setSelectedValues(selectElement, values) {
     });
 }
 
-function deleteHistoryItem(event, id) {
+async function deleteHistoryItem(event, id) {
     event.stopPropagation();
-    searchHistory = searchHistory.filter(item => item.id !== id);
     try {
-        localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(searchHistory));
+        await fetch(`/api/search-history/${id}`, { method: 'DELETE' });
+        await loadSearchHistory();
     } catch (e) {
-        console.error('Failed to save search history:', e);
+        console.error('Failed to delete search history item:', e);
     }
-    renderSearchHistory();
 }
 
-function clearSearchHistory() {
+async function clearSearchHistory() {
     if (confirm('Are you sure you want to clear all search history?')) {
-        searchHistory = [];
         try {
-            localStorage.removeItem(SEARCH_HISTORY_KEY);
+            await fetch('/api/search-history', { method: 'DELETE' });
+            await loadSearchHistory();
         } catch (e) {
             console.error('Failed to clear search history:', e);
         }
-        renderSearchHistory();
     }
 }
 
@@ -782,8 +690,8 @@ function showJobDetails(index) {
     if (job.date_posted) detailsHtml += `<div class="detail-item"><span class="detail-label">Posted</span><span class="detail-value">${escapeHtml(job.date_posted)}</span></div>`;
     if (job.salary_string) detailsHtml += `<div class="detail-item"><span class="detail-label">Salary</span><span class="detail-value">${escapeHtml(job.salary_string)}</span></div>`;
     if (job.remote !== undefined) detailsHtml += `<div class="detail-item"><span class="detail-label">Remote</span><span class="detail-value">${job.remote ? 'Yes' : 'No'}</span></div>`;
-    if (job.job_type) detailsHtml += `<div class="detail-item"><span class="detail-label">Job Type</span><span class="detail-value">${escapeHtml(job.job_type)}</span></div>`;
-    if (job.seniority) detailsHtml += `<div class="detail-item"><span class="detail-label">Seniority</span><span class="detail-value">${escapeHtml(formatSeniority(job.seniority))}</span></div>`;
+    if (job.job_type) detailsHtml += `<div class="detail-item"><span class="detail-label">Employment Type</span><span class="detail-value">${escapeHtml(formatEmploymentType(job.job_type))}</span></div>`;
+    if (job.job_publisher) detailsHtml += `<div class="detail-item"><span class="detail-label">Source</span><span class="detail-value">${escapeHtml(job.job_publisher)}</span></div>`;
     detailsHtml += `</div></div>`;
 
     // Company Info Section
@@ -801,10 +709,39 @@ function showJobDetails(index) {
     if (company.linkedin_url) detailsHtml += `<div class="detail-item"><span class="detail-label">LinkedIn</span><span class="detail-value"><a href="${escapeHtml(company.linkedin_url)}" target="_blank">View Profile</a></span></div>`;
     detailsHtml += `</div></div>`;
 
-    // Technologies
+    // Skills / Technologies
     const technologies = job.technology_slugs || company.technology_names || [];
     if (technologies.length > 0) {
-        detailsHtml += `<div class="details-section"><h4>Technologies</h4><div class="technologies">${technologies.map(t => `<span class="tech-tag">${escapeHtml(t)}</span>`).join('')}</div></div>`;
+        detailsHtml += `<div class="details-section"><h4>Required Skills</h4><div class="technologies">${technologies.map(t => `<span class="tech-tag">${escapeHtml(t)}</span>`).join('')}</div></div>`;
+    }
+
+    // Job Highlights (JSearch-specific)
+    if (job.job_highlights) {
+        if (job.job_highlights.Qualifications && job.job_highlights.Qualifications.length > 0) {
+            detailsHtml += `<div class="details-section"><h4>Qualifications</h4><ul class="highlights-list">${job.job_highlights.Qualifications.map(q => `<li>${escapeHtml(q)}</li>`).join('')}</ul></div>`;
+        }
+        if (job.job_highlights.Responsibilities && job.job_highlights.Responsibilities.length > 0) {
+            detailsHtml += `<div class="details-section"><h4>Responsibilities</h4><ul class="highlights-list">${job.job_highlights.Responsibilities.map(r => `<li>${escapeHtml(r)}</li>`).join('')}</ul></div>`;
+        }
+        if (job.job_highlights.Benefits && job.job_highlights.Benefits.length > 0) {
+            detailsHtml += `<div class="details-section"><h4>Benefits</h4><ul class="highlights-list">${job.job_highlights.Benefits.map(b => `<li>${escapeHtml(b)}</li>`).join('')}</ul></div>`;
+        }
+    }
+
+    // Experience requirements
+    if (job.job_required_experience) {
+        const exp = job.job_required_experience;
+        let expText = '';
+        if (exp.no_experience_required) expText = 'No experience required';
+        else if (exp.required_experience_in_months) expText = `${Math.round(exp.required_experience_in_months / 12)} years experience`;
+        if (expText) {
+            detailsHtml += `<div class="details-section"><h4>Experience</h4><p>${escapeHtml(expText)}</p></div>`;
+        }
+    }
+
+    // Apply options
+    if (job.apply_options && job.apply_options.length > 1) {
+        detailsHtml += `<div class="details-section"><h4>Apply On</h4><div class="apply-options">${job.apply_options.map(opt => `<a href="${escapeHtml(opt.apply_link)}" target="_blank" rel="noopener noreferrer" class="apply-option-link">${escapeHtml(opt.publisher)}${opt.is_direct ? ' (Direct)' : ''}</a>`).join('')}</div></div>`;
     }
 
     // Description

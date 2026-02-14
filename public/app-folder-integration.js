@@ -196,7 +196,7 @@ async function addJobToFolderAPI(index, folderId) {
 
     // Re-render current results to update folder indicators immediately
     if (typeof displayResults === 'function' && typeof jobsCache !== 'undefined') {
-        displayResults(jobsCache.slice(currentPage * 50, (currentPage + 1) * 50));
+        displayResults(jobsCache);
     }
 
     // Reset flag after a short delay to allow UI to settle
@@ -247,7 +247,7 @@ async function addJobToFolderAPI(index, folderId) {
 
         // Re-render to show reverted state
         if (typeof displayResults === 'function' && typeof jobsCache !== 'undefined') {
-            displayResults(jobsCache.slice(currentPage * 50, (currentPage + 1) * 50));
+            displayResults(jobsCache);
         }
     }
 }
@@ -274,7 +274,7 @@ async function removeJobFromFolderAPI(index, folderId) {
 
     // Re-render to update folder indicators
     if (typeof displayResults === 'function' && typeof jobsCache !== 'undefined') {
-        displayResults(jobsCache.slice(currentPage * 50, (currentPage + 1) * 50));
+        displayResults(jobsCache);
     }
 
     // Refresh the picker to show updated state
@@ -308,7 +308,7 @@ async function removeJobFromFolderAPI(index, folderId) {
 
         // Re-render to show reverted state
         if (typeof displayResults === 'function' && typeof jobsCache !== 'undefined') {
-            displayResults(jobsCache.slice(currentPage * 50, (currentPage + 1) * 50));
+            displayResults(jobsCache);
         }
 
         // Refresh picker to show reverted state

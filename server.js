@@ -25,8 +25,8 @@ app.use(express.json());
 app.use(express.static(join(__dirname, 'public')));
 
 // API Configuration
-const THEIRSTACK_API_URL = 'https://api.theirstack.com/v1';
-const THEIRSTACK_API_KEY = process.env.THEIRSTACK_API_KEY;
+const JSEARCH_API_URL = 'https://jsearch.p.rapidapi.com';
+const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const SIGNALHIRE_API_KEY = process.env.SIGNALHIRE_API_KEY;
@@ -105,7 +105,7 @@ setInterval(() => {
 app.get('/api/health', (req, res) => {
     res.json({
         status: 'ok',
-        theirstack: !!THEIRSTACK_API_KEY,
+        jsearch: !!RAPIDAPI_KEY,
         claude: !!ANTHROPIC_API_KEY,
         gemini: !!GEMINI_API_KEY,
         signalhire: !!SIGNALHIRE_API_KEY,
@@ -132,10 +132,78 @@ app.get('/api/cache', (req, res) => {
     });
 });
 
+// Helper: extract domain from URL
+function extractDomain(url) {
+    if (!url) return null;
+    try {
+        return new URL(url.startsWith('http') ? url : `https://${url}`).hostname.replace('www.', '');
+    } catch {
+        return null;
+    }
+}
+
+// Helper: format salary string from JSearch fields
+function formatSalaryString(minSalary, maxSalary, currency, period) {
+    if (!minSalary && !maxSalary) return null;
+    const cur = currency || 'USD';
+    const per = period ? `/${period.toLowerCase()}` : '';
+    if (minSalary && maxSalary) {
+        return `${cur} ${Number(minSalary).toLocaleString()} - ${Number(maxSalary).toLocaleString()}${per}`;
+    }
+    if (minSalary) return `${cur} ${Number(minSalary).toLocaleString()}+${per}`;
+    return `Up to ${cur} ${Number(maxSalary).toLocaleString()}${per}`;
+}
+
+// Helper: transform JSearch job to normalized format
+function transformJSearchJob(job) {
+    const domain = extractDomain(job.employer_website);
+    return {
+        id: job.job_id,
+        job_title: job.job_title,
+        company: job.employer_name,
+        company_domain: domain,
+        location: [job.job_city, job.job_state, job.job_country].filter(Boolean).join(', '),
+        short_location: [job.job_city, job.job_state].filter(Boolean).join(', ') || job.job_country || 'Not specified',
+        date_posted: job.job_posted_at_datetime_utc,
+        salary_string: formatSalaryString(job.job_min_salary, job.job_max_salary, job.job_salary_currency, job.job_salary_period),
+        description: job.job_description,
+        url: job.job_apply_link,
+        final_url: job.job_apply_link,
+        remote: job.job_is_remote || false,
+        job_type: job.job_employment_type,
+        seniority: null,
+        technology_slugs: job.job_required_skills || [],
+        company_object: {
+            name: job.employer_name,
+            domain: domain,
+            logo: job.employer_logo,
+            employee_count: null,
+            industry: job.job_naics_name || null,
+            funding_stage: null,
+            country: job.job_country,
+            city: job.job_city,
+            founded_year: null,
+            annual_revenue_usd_readable: null,
+            total_funding_usd: null,
+            technology_names: job.job_required_skills || [],
+            linkedin_url: null,
+            company_type: job.employer_company_type || null,
+            website: job.employer_website || null
+        },
+        // JSearch-specific extras
+        job_highlights: job.job_highlights || null,
+        job_required_experience: job.job_required_experience || null,
+        job_required_education: job.job_required_education || null,
+        apply_options: job.apply_options || [],
+        job_benefits: job.job_benefits || null,
+        job_publisher: job.job_publisher || null
+    };
+}
+
 // Job search endpoint with caching
 app.post('/api/jobs/search', async (req, res) => {
-    if (!THEIRSTACK_API_KEY) {
-        return res.status(500).json({ error: 'Theirstack API key not configured' });
+    if (!RAPIDAPI_KEY) {
+        return res.status(500).json({ error: 'RapidAPI key not configured' });
     }
 
     try {
@@ -143,7 +211,7 @@ app.post('/api/jobs/search', async (req, res) => {
         const cachedData = getFromCache(cacheKey);
 
         if (cachedData) {
-            console.log('Cache HIT for query:', req.body.job_title_pattern_or?.join(', ') || 'unknown');
+            console.log('Cache HIT for query:', req.body.query || 'unknown');
             return res.json({
                 ...cachedData,
                 _cached: true,
@@ -151,32 +219,128 @@ app.post('/api/jobs/search', async (req, res) => {
             });
         }
 
-        console.log('Cache MISS for query:', req.body.job_title_pattern_or?.join(', ') || 'unknown');
+        console.log('Cache MISS for query:', req.body.query || 'unknown');
 
-        const response = await fetch(`${THEIRSTACK_API_URL}/jobs/search`, {
-            method: 'POST',
+        // Build JSearch query parameters
+        const params = new URLSearchParams();
+        params.append('query', req.body.query || '');
+        params.append('page', req.body.page || 1);
+        params.append('num_pages', req.body.num_pages || 1);
+
+        if (req.body.date_posted) {
+            params.append('date_posted', req.body.date_posted);
+        }
+        if (req.body.remote_jobs_only) {
+            params.append('remote_jobs_only', 'true');
+        }
+        if (req.body.employment_types) {
+            params.append('employment_types', req.body.employment_types);
+        }
+        if (req.body.job_requirements) {
+            params.append('job_requirements', req.body.job_requirements);
+        }
+
+        const url = `${JSEARCH_API_URL}/search?${params.toString()}`;
+        console.log('JSearch request URL:', url);
+
+        const response = await fetch(url, {
+            method: 'GET',
             headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${THEIRSTACK_API_KEY}`
-            },
-            body: JSON.stringify(req.body)
+                'X-RapidAPI-Key': RAPIDAPI_KEY,
+                'X-RapidAPI-Host': 'jsearch.p.rapidapi.com'
+            }
         });
 
         if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            return res.status(response.status).json({
-                error: errorData.message || `Theirstack API error: ${response.status}`
-            });
+            const errorText = await response.text().catch(() => '');
+            console.error(`JSearch API error ${response.status}:`, errorText);
+            let errorMessage;
+            try {
+                const errorData = JSON.parse(errorText);
+                errorMessage = errorData.message || errorData.info || JSON.stringify(errorData);
+            } catch {
+                errorMessage = errorText || `JSearch API error: ${response.status}`;
+            }
+            return res.status(response.status).json({ error: errorMessage });
         }
 
-        const data = await response.json();
+        const rawData = await response.json();
+
+        // Transform JSearch response to normalized format
+        const transformedJobs = (rawData.data || []).map(transformJSearchJob);
+
+        const data = {
+            data: transformedJobs,
+            total: transformedJobs.length,
+            _hasMore: transformedJobs.length > 0
+        };
+
         setInCache(cacheKey, data);
-        console.log('Cached results for query:', req.body.job_title_pattern_or?.join(', ') || 'unknown');
+        console.log('Cached results for query:', req.body.query || 'unknown', `(${transformedJobs.length} jobs)`);
 
         res.json({ ...data, _cached: false });
     } catch (error) {
         console.error('Job search error:', error);
         res.status(500).json({ error: 'Failed to search jobs' });
+    }
+});
+
+// ===== SEARCH HISTORY ENDPOINTS =====
+
+// Get search history
+app.get('/api/search-history', async (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not initialized' });
+    }
+    try {
+        const history = await db.getSearchHistory();
+        res.json(history);
+    } catch (error) {
+        console.error('Get search history error:', error);
+        res.status(500).json({ error: 'Failed to get search history' });
+    }
+});
+
+// Save search to history
+app.post('/api/search-history', async (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not initialized' });
+    }
+    try {
+        const { query, params, criteria, results_count } = req.body;
+        const entry = await db.saveSearchHistory(query, params, criteria, results_count || 0);
+        res.json(entry);
+    } catch (error) {
+        console.error('Save search history error:', error);
+        res.status(500).json({ error: 'Failed to save search history' });
+    }
+});
+
+// Delete a search history entry
+app.delete('/api/search-history/:id', async (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not initialized' });
+    }
+    try {
+        await db.deleteSearchHistory(parseInt(req.params.id));
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Delete search history error:', error);
+        res.status(500).json({ error: 'Failed to delete search history entry' });
+    }
+});
+
+// Clear all search history
+app.delete('/api/search-history', async (req, res) => {
+    if (!db) {
+        return res.status(503).json({ error: 'Database not initialized' });
+    }
+    try {
+        await db.clearSearchHistory();
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Clear search history error:', error);
+        res.status(500).json({ error: 'Failed to clear search history' });
     }
 });
 
@@ -845,7 +1009,7 @@ async function startServer() {
         // Start server
         app.listen(PORT, () => {
             console.log(`JobFeeder server running on port ${PORT}`);
-            console.log(`Theirstack API: ${THEIRSTACK_API_KEY ? 'Configured' : 'Not configured'}`);
+            console.log(`JSearch API: ${RAPIDAPI_KEY ? 'Configured' : 'Not configured'}`);
             console.log(`Claude API: ${ANTHROPIC_API_KEY ? 'Configured' : 'Not configured'}`);
             console.log(`Gemini API: ${GEMINI_API_KEY ? 'Configured (used for enrichment)' : 'Not configured'}`);
             console.log(`SignalHire API: ${SIGNALHIRE_API_KEY ? 'Configured' : 'Not configured'}`);

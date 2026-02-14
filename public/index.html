@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JobFeeder - Theirstack Job Search</title>
+    <title>JobFeeder - Job Search</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -40,14 +40,24 @@
                         <input type="text" id="jobTitle" placeholder="e.g., Software Engineer, Data Scientist" required>
                     </div>
                     <div class="form-group">
-                        <label for="jobSeniority">Seniority Level</label>
-                        <select id="jobSeniority" multiple>
-                            <option value="intern">Intern</option>
-                            <option value="junior">Junior</option>
-                            <option value="mid_level">Mid Level</option>
-                            <option value="senior">Senior</option>
-                            <option value="staff">Staff</option>
-                            <option value="c_level">C-Level</option>
+                        <label for="employmentType">Employment Type</label>
+                        <select id="employmentType" multiple>
+                            <option value="FULLTIME">Full Time</option>
+                            <option value="CONTRACTOR">Contractor</option>
+                            <option value="PARTTIME">Part Time</option>
+                            <option value="INTERN">Intern</option>
+                        </select>
+                        <small>Hold Ctrl/Cmd to select multiple</small>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="experienceLevel">Experience Level</label>
+                        <select id="experienceLevel" multiple>
+                            <option value="under_3_years_experience">Under 3 Years</option>
+                            <option value="more_than_3_years_experience">3+ Years</option>
+                            <option value="no_experience">No Experience</option>
+                            <option value="no_degree">No Degree Required</option>
                         </select>
                         <small>Hold Ctrl/Cmd to select multiple</small>
                     </div>
@@ -96,90 +106,28 @@
                 </div>
             </div>
 
-            <div class="form-section">
-                <h3>Company Criteria</h3>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="minEmployees">Min Employees</label>
-                        <input type="number" id="minEmployees" placeholder="e.g., 50" min="1">
-                    </div>
-                    <div class="form-group">
-                        <label for="maxEmployees">Max Employees</label>
-                        <input type="number" id="maxEmployees" placeholder="e.g., 1000" min="1">
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="industry">Industry</label>
-                        <input type="text" id="industry" placeholder="e.g., Software, Finance, Healthcare">
-                    </div>
-                    <div class="form-group">
-                        <label for="fundingStage">Funding Stage</label>
-                        <select id="fundingStage" multiple>
-                            <option value="seed">Seed</option>
-                            <option value="series_a">Series A</option>
-                            <option value="series_b">Series B</option>
-                            <option value="series_c">Series C</option>
-                            <option value="series_d">Series D</option>
-                            <option value="series_e">Series E+</option>
-                            <option value="ipo">IPO/Public</option>
-                        </select>
-                        <small>Hold Ctrl/Cmd to select multiple</small>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group checkbox-group">
-                        <label>
-                            <input type="checkbox" id="ycOnly">
-                            Y Combinator companies only
-                        </label>
-                    </div>
-                </div>
-            </div>
 
             <div class="form-section">
                 <h3>Additional Filters</h3>
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="technologies">Technologies Used</label>
-                        <input type="text" id="technologies" placeholder="e.g., React, Python, AWS (comma-separated)">
-                    </div>
-                    <div class="form-group">
-                        <label for="excludeCompanies">Exclude Companies</label>
-                        <input type="text" id="excludeCompanies" placeholder="e.g., Google, Meta (comma-separated)">
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="postedDays">Posted Within</label>
-                        <select id="postedDays">
-                            <option value="1">Last 24 hours</option>
-                            <option value="3">Last 3 days</option>
-                            <option value="7">Last 7 days</option>
-                            <option value="15" selected>Last 15 days</option>
-                            <option value="30">Last 30 days</option>
-                            <option value="60">Last 60 days</option>
-                            <option value="90">Last 90 days</option>
+                        <label for="datePosted">Posted Within</label>
+                        <select id="datePosted">
+                            <option value="all" selected>All Time</option>
+                            <option value="today">Last 24 hours</option>
+                            <option value="3days">Last 3 days</option>
+                            <option value="week">Last week</option>
+                            <option value="month">Last month</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="resultsLimit">Results per page</label>
-                        <select id="resultsLimit">
-                            <option value="3" selected>3</option>
-                            <option value="10">10</option>
-                            <option value="25">25</option>
-                            <option value="50">50</option>
-                            <option value="100">100</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="sortBy">Sort By</label>
-                        <select id="sortBy">
-                            <option value="date_posted" selected>Date Posted (Newest)</option>
-                            <option value="company">Company Name</option>
-                            <option value="job_title">Job Title</option>
+                        <label for="numPages">Number of pages</label>
+                        <select id="numPages">
+                            <option value="1" selected>1 (~10 results)</option>
+                            <option value="2">2 (~20 results)</option>
+                            <option value="3">3 (~30 results)</option>
+                            <option value="5">5 (~50 results)</option>
+                            <option value="10">10 (~100 results)</option>
                         </select>
                     </div>
                 </div>
