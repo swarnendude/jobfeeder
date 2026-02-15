@@ -335,6 +335,11 @@
                 <p>Manage your outreach campaigns</p>
             </div>
             <div style="display: flex; gap: 20px; align-items: center;">
+                <div class="nav-user" id="navUser">
+                    <img id="userPicture" class="user-avatar" src="" alt="" style="display:none">
+                    <span id="userName" class="user-name"></span>
+                    <button id="logoutBtn" class="btn-logout" title="Sign out">Logout</button>
+                </div>
                 <a href="/" class="btn btn-secondary">← Back to Search</a>
                 <div class="notification-bell" id="notificationBell">
                     🔔
@@ -387,5 +392,21 @@
     </div>
 
     <script src="folders.js"></script>
+    <script>
+        fetch('/api/auth/me').then(r => r.json()).then(data => {
+            if (data.user) {
+                document.getElementById('userName').textContent = data.user.name;
+                if (data.user.picture) {
+                    const img = document.getElementById('userPicture');
+                    img.src = data.user.picture;
+                    img.style.display = '';
+                }
+            }
+        }).catch(() => {});
+        document.getElementById('logoutBtn').addEventListener('click', async () => {
+            await fetch('/api/auth/logout', { method: 'POST' });
+            window.location.href = '/login.html';
+        });
+    </script>
 </body>
 </html>

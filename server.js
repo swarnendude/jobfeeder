@@ -3,6 +3,10 @@ import express from 'express';
 import Anthropic from '@anthropic-ai/sdk';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { readFileSync } from 'fs';
+import crypto from 'crypto';
+import { OAuth2Client } from 'google-auth-library';
+import cookieParser from 'cookie-parser';
 import { initializePostgresDatabase } from './db-postgres.js';
 import { CompanyEnricher } from './enrichment.js';
 import { WorkflowManager } from './workflow-manager.js';
@@ -14,6 +18,9 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Trust proxy for Render.com (required for secure cookies behind reverse proxy)
+app.set('trust proxy', 1);
+
 // Database, enricher, workflow manager, and prospecting service (initialized async)
 let db = null;
 let enricher = null;
@@ -22,7 +29,7 @@ let prospectingService = null;
 
 // Middleware
 app.use(express.json());
-app.use(express.static(join(__dirname, 'public')));
+app.use(cookieParser());
 
 // API Configuration
 const JSEARCH_API_URL = 'https://jsearch.p.rapidapi.com';
@@ -31,6 +38,26 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const SIGNALHIRE_API_KEY = process.env.SIGNALHIRE_API_KEY;
 const DATABASE_URL = process.env.DATABASE_URL;
+
+// Auth Configuration
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const ALLOWED_EMAILS = (process.env.ALLOWED_EMAILS || '')
+    .split(',')
+    .map(e => e.trim().toLowerCase())
+    .filter(Boolean);
+const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-secret-change-in-production';
+const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
+
+// Read login.html template once (lazy, cached on first request)
+let loginHtmlTemplate = null;
+function getLoginHtml() {
+    if (!loginHtmlTemplate) {
+        loginHtmlTemplate = readFileSync(join(__dirname, 'public', 'login.html'), 'utf8');
+    }
+    return loginHtmlTemplate;
+}
 
 // Initialize Anthropic client
 const anthropic = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
@@ -101,7 +128,78 @@ setInterval(() => {
     }
 }, 60 * 60 * 1000);
 
-// Health check
+// ===== AUTH HELPERS =====
+
+function createSessionToken(payload) {
+    const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+    const body = Buffer.from(JSON.stringify({
+        ...payload,
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor((Date.now() + SESSION_MAX_AGE_MS) / 1000)
+    })).toString('base64url');
+    const signature = crypto
+        .createHmac('sha256', SESSION_SECRET)
+        .update(`${header}.${body}`)
+        .digest('base64url');
+    return `${header}.${body}.${signature}`;
+}
+
+function verifySessionToken(token) {
+    try {
+        const [header, body, signature] = token.split('.');
+        const expectedSig = crypto
+            .createHmac('sha256', SESSION_SECRET)
+            .update(`${header}.${body}`)
+            .digest('base64url');
+        if (signature !== expectedSig) return null;
+        const payload = JSON.parse(Buffer.from(body, 'base64url').toString());
+        if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null;
+        return payload;
+    } catch {
+        return null;
+    }
+}
+
+function requireAuth(req, res, next) {
+    const token = req.cookies?.session;
+    if (!token) {
+        if (req.path.startsWith('/api/')) {
+            return res.status(401).json({ error: 'Not authenticated' });
+        }
+        return res.redirect('/login.html');
+    }
+
+    const payload = verifySessionToken(token);
+    if (!payload) {
+        res.clearCookie('session', { path: '/' });
+        if (req.path.startsWith('/api/')) {
+            return res.status(401).json({ error: 'Session expired' });
+        }
+        return res.redirect('/login.html');
+    }
+
+    // Re-check whitelist on every request (instant revocation if email removed)
+    if (!ALLOWED_EMAILS.includes(payload.email)) {
+        res.clearCookie('session', { path: '/' });
+        if (req.path.startsWith('/api/')) {
+            return res.status(403).json({ error: 'Access revoked' });
+        }
+        return res.redirect('/login.html');
+    }
+
+    req.user = payload;
+    next();
+}
+
+// ===== PUBLIC ROUTES (no auth required) =====
+
+// Serve login page (with client ID injected)
+app.get('/login.html', (req, res) => {
+    const html = getLoginHtml().replace('__GOOGLE_CLIENT_ID__', GOOGLE_CLIENT_ID || '');
+    res.type('html').send(html);
+});
+
+// Health check (public for Render.com monitoring)
 app.get('/api/health', (req, res) => {
     res.json({
         status: 'ok',
@@ -114,7 +212,7 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-// Cache management
+// Cache management (public)
 app.delete('/api/cache', (req, res) => {
     const stats = getCacheStats();
     searchCache.clear();
@@ -131,6 +229,84 @@ app.get('/api/cache', (req, res) => {
         ttlHours: CACHE_TTL_MS / (60 * 60 * 1000)
     });
 });
+
+// ===== AUTH ENDPOINTS (public) =====
+
+// Verify Google token and create session
+app.post('/api/auth/google', async (req, res) => {
+    if (!googleClient) {
+        return res.status(500).json({ error: 'Google OAuth not configured' });
+    }
+
+    const { credential } = req.body;
+    if (!credential) {
+        return res.status(400).json({ error: 'Missing credential' });
+    }
+
+    try {
+        const ticket = await googleClient.verifyIdToken({
+            idToken: credential,
+            audience: GOOGLE_CLIENT_ID,
+        });
+        const googlePayload = ticket.getPayload();
+        const email = googlePayload.email.toLowerCase();
+
+        if (!ALLOWED_EMAILS.includes(email)) {
+            console.log(`[Auth] Access denied for: ${email}`);
+            return res.status(403).json({
+                error: 'Access denied',
+                message: 'Your email is not authorized to use this application.'
+            });
+        }
+
+        const sessionPayload = {
+            email,
+            name: googlePayload.name || email,
+            picture: googlePayload.picture || null,
+        };
+        const sessionToken = createSessionToken(sessionPayload);
+
+        res.cookie('session', sessionToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            maxAge: SESSION_MAX_AGE_MS,
+            path: '/',
+        });
+
+        console.log(`[Auth] Login successful: ${email}`);
+        res.json({ success: true, user: sessionPayload });
+    } catch (error) {
+        console.error('[Auth] Token verification failed:', error.message);
+        res.status(401).json({ error: 'Invalid token' });
+    }
+});
+
+// Check current session
+app.get('/api/auth/me', (req, res) => {
+    const token = req.cookies?.session;
+    if (!token) {
+        return res.status(401).json({ error: 'Not authenticated' });
+    }
+    const payload = verifySessionToken(token);
+    if (!payload) {
+        res.clearCookie('session', { path: '/' });
+        return res.status(401).json({ error: 'Session expired' });
+    }
+    res.json({ user: { email: payload.email, name: payload.name, picture: payload.picture } });
+});
+
+// Logout
+app.post('/api/auth/logout', (req, res) => {
+    res.clearCookie('session', { path: '/' });
+    res.json({ success: true });
+});
+
+// ===== AUTH MIDDLEWARE (everything below is protected) =====
+app.use(requireAuth);
+
+// Serve protected static files (after auth check)
+app.use(express.static(join(__dirname, 'public')));
 
 // Helper: extract domain from URL
 function extractDomain(url) {
@@ -1014,6 +1190,8 @@ async function startServer() {
             console.log(`Gemini API: ${GEMINI_API_KEY ? 'Configured (used for enrichment)' : 'Not configured'}`);
             console.log(`SignalHire API: ${SIGNALHIRE_API_KEY ? 'Configured' : 'Not configured'}`);
             console.log(`Database: PostgreSQL (Render.com)`);
+            console.log(`Google Auth: ${GOOGLE_CLIENT_ID ? 'Configured' : 'Not configured'}`);
+            console.log(`Allowed emails: ${ALLOWED_EMAILS.length} configured`);
         });
     } catch (error) {
         console.error('Failed to start server:', error);

@@ -72,6 +72,47 @@ body {
     color: white;
 }
 
+/* User Auth Nav */
+.nav-user {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.user-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.user-name {
+    font-size: 13px;
+    color: var(--text-secondary);
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.btn-logout {
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-logout:hover {
+    color: var(--error-color);
+    border-color: var(--error-color);
+    background: rgba(239, 68, 68, 0.05);
+}
+
 /* Search History Sidebar */
 .search-history-sidebar {
     width: 280px;

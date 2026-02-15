@@ -26,6 +26,11 @@
                     <a href="/" class="nav-link active">Jobs</a>
                     <a href="/folders.html" class="nav-link">Folders</a>
                 </div>
+                <div class="nav-user" id="navUser">
+                    <img id="userPicture" class="user-avatar" src="" alt="" style="display:none">
+                    <span id="userName" class="user-name"></span>
+                    <button id="logoutBtn" class="btn-logout" title="Sign out">Logout</button>
+                </div>
             </nav>
             <p class="subtitle">Search jobs with company filters</p>
             <div id="apiStatus" class="api-status"></div>
@@ -166,5 +171,22 @@
 
     <script src="app.js?v=8"></script>
     <script src="app-folder-integration.js?v=8"></script>
+    <script>
+        // Load user info and setup logout
+        fetch('/api/auth/me').then(r => r.json()).then(data => {
+            if (data.user) {
+                document.getElementById('userName').textContent = data.user.name;
+                if (data.user.picture) {
+                    const img = document.getElementById('userPicture');
+                    img.src = data.user.picture;
+                    img.style.display = '';
+                }
+            }
+        }).catch(() => {});
+        document.getElementById('logoutBtn').addEventListener('click', async () => {
+            await fetch('/api/auth/logout', { method: 'POST' });
+            window.location.href = '/login.html';
+        });
+    </script>
 </body>
 </html>
